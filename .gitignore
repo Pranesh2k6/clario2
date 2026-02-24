@@ -110,3 +110,5 @@ frontend/dist/
 # Auto-generated agents
 .agent/
 .skills/
+
+docs/
