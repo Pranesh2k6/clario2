@@ -6,8 +6,8 @@ import { CosmicIllustration } from '../components/CosmicIllustration';
 import { AuthInput } from '../components/AuthInput';
 import { AuthButton } from '../components/AuthButton';
 import { ModeToggle } from '../components/ModeToggle';
-import { useAuth } from '../../context/AuthContext';
-import client from '../../api/client';
+import { useAuth } from '../context/AuthContext';
+import client from '../api/client';
 const clarioLogo = '';
 
 export default function Auth() {
