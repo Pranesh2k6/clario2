@@ -38,10 +38,6 @@ app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// ─── Serve Dataset Images ─────────────────────────────────────────────────────
-const path = require('path');
-app.use('/dataset', express.static(path.join(__dirname, '../../dataset')));
-
 // ─── API Routes ───────────────────────────────────────────────────────────────
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/users', authRoutes);   // GET /api/v1/users/me is on the auth router
