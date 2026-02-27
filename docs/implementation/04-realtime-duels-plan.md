@@ -6,8 +6,8 @@ Implement a fully functional 1v1 Realtime Duels feature where users can:
 - Match instantly with a random opponent.
 - Accept or decline pending duel requests.
 - Start an AI Duel.
-- Pre-select subjects before duel generation.
-- Answer 10 real questions fetched from the DB (seeded from the Hugging Face dataset).
+- Pre-select subjects before any duel generation.
+- Answer 10 real questions fetched from the Dataset (/Users/praneshjs/Education/Clario3/dataset).
 - Maintain the **exact existing UI design** of the `Duels.jsx` and `DuelMatch.jsx` components without altering DOM structures or styling classes.
 
 ---
@@ -25,7 +25,7 @@ Before and during execution, the following skills from the `.skills` directory m
 We need to extend `backend/src/routes/duels.js` and `backend/src/index.js` (Socket.io).
 
 ### 1.1 Database Helper Functions
-- Create a helper to fetch 10 random questions from the structured `questions` table based on an array of `subject_ids`.
+- Create a helper to fetch 10 random questions from the /Users/praneshjs/Education/Clario3/dataset.
 
 ### 1.2 REST Endpoints (`/api/v1/duels`)
 1.  **`POST /request` (Update)**: Modify to accept `subjects` (array) along with `targetUserId`.
@@ -74,7 +74,7 @@ Modify `frontend/src/pages/Duels.jsx` and related match pages. **Strictly preser
     - Wire "Start AI Duel" to `POST /api/v1/duels/ai-match`.
 
 ### 2.3 Duel Match Interface (`DuelMatch.jsx`)
-1.  **Pre-loading**: Before starting the timer, preload the 10 HuggingFace CDN image URLs locally.
+1.  **Pre-loading**: Before starting the timer, fetch all the 10 questions from the /Users/praneshjs/Education/Clario3/dataset dir
 2.  **State Management**: Track `currentQuestionIndex`, `playerScore`, `opponentScore`, `timeLeft`.
 3.  **Real-time Sync**: Listen to `duel:question_tick` to update the progress bar.
 4.  **Answer Submission**: When clicking an option, call `POST /:id/submit`. Show immediate local positive/negative feedback, but wait for `duel:next_question` to proceed.
@@ -83,5 +83,4 @@ Modify `frontend/src/pages/Duels.jsx` and related match pages. **Strictly preser
 
 ## Phase 3: Verification & Edge Cases
 1.  **Disconnections**: Handle `disconnect` events in Socket.io. If a player drops, auto-forfeit them after a 10-second grace period.
-2.  **Image Loading**: Ensure CDN images don't cause layout shift in the exact UI.
 3.  **Security**: Ensure `correct_answer_index` is NEVER sent to the frontend until the round ends.

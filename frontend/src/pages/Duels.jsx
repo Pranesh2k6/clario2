@@ -1,8 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { motion } from 'motion/react';
 import { SpaceBackground } from '../components/SpaceBackground';
-import { LayoutDashboard, Map, FileText, Swords, Calendar, BarChart3, Settings, Flame, Zap, Users, UserPlus, Gamepad2, Clock, Trophy, CheckCircle, X } from 'lucide-react';
+import { LayoutDashboard, Map, FileText, Swords, Calendar, BarChart3, Settings, Flame, Zap, Users, UserPlus, Gamepad2, Clock, Trophy, CheckCircle, X, Loader } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import client from '../api/client';
 const clarioLogo = '';
 
 const navItems = [
@@ -15,17 +17,108 @@ const navItems = [
   { icon: Settings, label: 'Settings', path: '/settings' },
 ];
 
-// Mock pending challenges
-const pendingChallenges = [
-  { id: 1, name: 'Sarah Chen', avatar: '#8B5CF6', level: 12, subject: 'Physics' },
-  { id: 2, name: 'Alex Kumar', avatar: '#6366F1', level: 14, subject: 'Chemistry' },
-  { id: 3, name: 'Maya Patel', avatar: '#EC4899', level: 11, subject: 'Mathematics' },
-];
-
 export default function Duels() {
   const navigate = useNavigate();
+  const { currentUser } = useAuth();
   const [friendCode, setFriendCode] = useState('');
   const [activeMode, setActiveMode] = useState(null);
+
+  // Data states
+  const [pendingChallenges, setPendingChallenges] = useState([]);
+  const [activity, setActivity] = useState({ totalDuels: 0, winRate: 0, rank: 0 });
+  const [subjects, setSubjects] = useState([]);
+  const [selectedSubjects, setSelectedSubjects] = useState([]);
+  const [loading, setLoading] = useState({ random: false, ai: false, friend: false });
+  const [matchmakingStatus, setMatchmakingStatus] = useState(null);
+
+  // Fetch data on mount
+  useEffect(() => {
+    client.get('/duels/pending').then(r => setPendingChallenges(r.data.duels)).catch(() => { });
+    client.get('/duels/recent-activity').then(r => setActivity(r.data)).catch(() => { });
+    client.get('/duels/subjects/list').then(r => setSubjects(r.data.subjects)).catch(() => { });
+  }, []);
+
+  // Toggle subject selection
+  const toggleSubject = (id) => {
+    setSelectedSubjects(prev =>
+      prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id]
+    );
+  };
+
+  // ── Random Match ──────────────────────────────────────────────────────────
+  const handleRandomMatch = async () => {
+    setLoading(l => ({ ...l, random: true }));
+    setMatchmakingStatus('searching');
+    try {
+      const res = await client.post('/duels/random-match', { subjectIds: selectedSubjects });
+      if (res.data.matched) {
+        navigate(`/duels/match`, { state: { duelId: res.data.duel.id } });
+      } else {
+        setMatchmakingStatus('waiting');
+        // Poll every 3 seconds
+        const interval = setInterval(async () => {
+          try {
+            const r = await client.post('/duels/random-match', { subjectIds: selectedSubjects });
+            if (r.data.matched) {
+              clearInterval(interval);
+              navigate(`/duels/match`, { state: { duelId: r.data.duel.id } });
+            }
+          } catch { clearInterval(interval); setMatchmakingStatus(null); }
+        }, 3000);
+        // Timeout after 30 seconds
+        setTimeout(() => { clearInterval(interval); setMatchmakingStatus(null); setLoading(l => ({ ...l, random: false })); }, 30000);
+        return;
+      }
+    } catch (err) {
+      console.error('Random match error:', err);
+      setMatchmakingStatus(null);
+    }
+    setLoading(l => ({ ...l, random: false }));
+  };
+
+  // ── Friend Duel (Join by Code) ────────────────────────────────────────────
+  const handleJoinDuel = async () => {
+    if (!friendCode.trim()) return;
+    setLoading(l => ({ ...l, friend: true }));
+    try {
+      const res = await client.post('/duels/join', { duelCode: friendCode.trim() });
+      navigate(`/duels/match`, { state: { duelId: res.data.duel.id } });
+    } catch (err) {
+      alert(err.response?.data?.error || 'Could not join duel. Check the code.');
+    }
+    setLoading(l => ({ ...l, friend: false }));
+  };
+
+  // ── AI Match ──────────────────────────────────────────────────────────────
+  const handleAiMatch = async () => {
+    setLoading(l => ({ ...l, ai: true }));
+    try {
+      const res = await client.post('/duels/ai-match', { subjectIds: selectedSubjects });
+      navigate(`/duels/match`, { state: { duelId: res.data.duel.id } });
+    } catch (err) {
+      console.error('AI match error:', err);
+    }
+    setLoading(l => ({ ...l, ai: false }));
+  };
+
+  // ── Accept / Decline ──────────────────────────────────────────────────────
+  const handleAccept = async (duelId) => {
+    try {
+      await client.post(`/duels/${duelId}/accept`);
+      navigate(`/duels/match`, { state: { duelId } });
+    } catch (err) {
+      console.error('Accept error:', err);
+    }
+  };
+
+  const handleDecline = async (duelId) => {
+    try {
+      await client.post(`/duels/${duelId}/decline`);
+      setPendingChallenges(prev => prev.filter(d => d.id !== duelId));
+    } catch (err) {
+      console.error('Decline error:', err);
+    }
+  };
 
   return (
     <div className="relative min-h-screen w-full overflow-hidden">
@@ -68,9 +161,9 @@ export default function Duels() {
         <aside className="hidden lg:flex flex-col w-[260px] bg-[rgba(8,5,24,0.85)] backdrop-blur-xl border-r border-white/8">
           {/* Logo */}
           <div className="p-6 border-b border-white/8">
-            <img 
-              src={clarioLogo} 
-              alt="Clario" 
+            <img
+              src={clarioLogo}
+              alt="Clario"
               className="h-[64px] w-auto"
             />
           </div>
@@ -91,8 +184,8 @@ export default function Duels() {
                     w-full flex items-center gap-3 px-4 py-3 rounded-xl
                     text-[14px] font-medium transition-all duration-200
                     relative
-                    ${isActive 
-                      ? 'bg-white/8 text-[#F3F4F6]' 
+                    ${isActive
+                      ? 'bg-white/8 text-[#F3F4F6]'
                       : isImplemented
                         ? 'text-[#9CA3AF] hover:bg-white/5 hover:text-[#D1D5DB] cursor-pointer'
                         : 'text-[#9CA3AF]/40 cursor-not-allowed'
@@ -155,11 +248,11 @@ export default function Duels() {
                 <motion.div
                   initial={{ opacity: 0, y: -20 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className="text-center mb-12 relative"
+                  className="text-center mb-8 relative"
                 >
                   {/* Atmospheric Glow */}
                   <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[200px] bg-gradient-to-b from-[#8B5CF6]/20 via-[#EC4899]/10 to-transparent rounded-full blur-[100px] -z-10" />
-                  
+
                   <h1 className="text-[40px] font-bold text-[#F3F4F6] mb-3">
                     Enter the Duel Arena
                   </h1>
@@ -167,6 +260,36 @@ export default function Duels() {
                     Choose how you want to battle.
                   </p>
                 </motion.div>
+
+                {/* Subject Selection */}
+                {subjects.length > 0 && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="mb-8"
+                  >
+                    <h3 className="text-[13px] font-semibold text-[#9CA3AF] uppercase tracking-wider mb-3 text-center">
+                      Select Subjects (optional)
+                    </h3>
+                    <div className="flex flex-wrap items-center justify-center gap-2">
+                      {subjects.map(s => (
+                        <button
+                          key={s.id}
+                          onClick={() => toggleSubject(s.id)}
+                          className={`
+                            px-4 py-2 rounded-xl text-[13px] font-medium transition-all duration-200 border
+                            ${selectedSubjects.includes(s.id)
+                              ? 'bg-[#8B5CF6]/20 border-[#8B5CF6]/50 text-[#F3F4F6]'
+                              : 'bg-white/5 border-white/10 text-[#9CA3AF] hover:border-white/20'
+                            }
+                          `}
+                        >
+                          {s.title}
+                        </button>
+                      ))}
+                    </div>
+                  </motion.div>
+                )}
 
                 {/* Mode Selection Grid */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-12">
@@ -179,7 +302,7 @@ export default function Duels() {
                     onHoverStart={() => setActiveMode('random')}
                     onHoverEnd={() => setActiveMode(null)}
                     className="relative bg-[rgba(12,8,36,0.7)] backdrop-blur-xl rounded-2xl border border-white/12 p-8 overflow-hidden group cursor-pointer"
-                    onClick={() => navigate('/duels/match')}
+                    onClick={handleRandomMatch}
                   >
                     {/* Electric Streak Accent */}
                     <motion.div
@@ -190,13 +313,13 @@ export default function Duels() {
                       }}
                       transition={{ duration: 0.3 }}
                     />
-                    
+
                     {/* Border Glow */}
                     <motion.div
                       className="absolute inset-0 rounded-2xl border-2 border-[#10B981]/40 opacity-0 group-hover:opacity-100"
                       animate={{
-                        boxShadow: activeMode === 'random' 
-                          ? '0 0 30px rgba(16, 185, 129, 0.4)' 
+                        boxShadow: activeMode === 'random'
+                          ? '0 0 30px rgba(16, 185, 129, 0.4)'
                           : '0 0 0px rgba(16, 185, 129, 0)',
                       }}
                       transition={{ duration: 0.3 }}
@@ -226,9 +349,14 @@ export default function Duels() {
                     <motion.button
                       whileHover={{ scale: 1.05 }}
                       whileTap={{ scale: 0.95 }}
-                      className="w-full py-3 bg-[#10B981] text-white rounded-xl font-semibold text-[14px] shadow-[0_4px_16px_rgba(16,185,129,0.3)] hover:shadow-[0_6px_24px_rgba(16,185,129,0.4)] transition-all"
+                      disabled={loading.random}
+                      className="w-full py-3 bg-[#10B981] text-white rounded-xl font-semibold text-[14px] shadow-[0_4px_16px_rgba(16,185,129,0.3)] hover:shadow-[0_6px_24px_rgba(16,185,129,0.4)] transition-all disabled:opacity-60"
                     >
-                      Find Match
+                      {matchmakingStatus === 'waiting' ? (
+                        <span className="flex items-center justify-center gap-2">
+                          <Loader size={16} className="animate-spin" /> Searching...
+                        </span>
+                      ) : 'Find Match'}
                     </motion.button>
                   </motion.div>
 
@@ -251,13 +379,13 @@ export default function Duels() {
                       }}
                       transition={{ duration: 0.3 }}
                     />
-                    
+
                     {/* Border Glow */}
                     <motion.div
                       className="absolute inset-0 rounded-2xl border-2 border-[#6366F1]/40 opacity-0 group-hover:opacity-100"
                       animate={{
-                        boxShadow: activeMode === 'friend' 
-                          ? '0 0 30px rgba(99, 102, 241, 0.4)' 
+                        boxShadow: activeMode === 'friend'
+                          ? '0 0 30px rgba(99, 102, 241, 0.4)'
                           : '0 0 0px rgba(99, 102, 241, 0)',
                       }}
                       transition={{ duration: 0.3 }}
@@ -281,16 +409,18 @@ export default function Duels() {
                       <input
                         type="text"
                         value={friendCode}
-                        onChange={(e) => setFriendCode(e.target.value)}
+                        onChange={(e) => setFriendCode(e.target.value.toUpperCase())}
                         placeholder="Enter duel code"
-                        className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-[14px] text-[#F3F4F6] placeholder:text-[#6B7280] focus:outline-none focus:border-[#6366F1]/50 focus:bg-white/8 transition-all"
+                        className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-[14px] text-[#F3F4F6] placeholder:text-[#6B7280] focus:outline-none focus:border-[#6366F1]/50 focus:bg-white/8 transition-all uppercase tracking-widest text-center"
                       />
                       <motion.button
                         whileHover={{ scale: 1.05 }}
                         whileTap={{ scale: 0.95 }}
-                        className="w-full py-3 bg-[#6366F1] text-white rounded-xl font-semibold text-[14px] shadow-[0_4px_16px_rgba(99,102,241,0.3)] hover:shadow-[0_6px_24px_rgba(99,102,241,0.4)] transition-all"
+                        onClick={handleJoinDuel}
+                        disabled={loading.friend || !friendCode.trim()}
+                        className="w-full py-3 bg-[#6366F1] text-white rounded-xl font-semibold text-[14px] shadow-[0_4px_16px_rgba(99,102,241,0.3)] hover:shadow-[0_6px_24px_rgba(99,102,241,0.4)] transition-all disabled:opacity-60"
                       >
-                        Join Duel
+                        {loading.friend ? <Loader size={16} className="animate-spin mx-auto" /> : 'Join Duel'}
                       </motion.button>
                     </div>
                   </motion.div>
@@ -314,26 +444,28 @@ export default function Duels() {
                       }}
                       transition={{ duration: 0.3 }}
                     />
-                    
+
                     {/* Pulse Indicator */}
-                    <motion.div
-                      className="absolute top-4 right-4 w-3 h-3 bg-[#FBBF24] rounded-full"
-                      animate={{
-                        scale: [1, 1.3, 1],
-                        opacity: [1, 0.7, 1],
-                      }}
-                      transition={{
-                        duration: 2,
-                        repeat: Infinity,
-                      }}
-                    />
-                    
+                    {pendingChallenges.length > 0 && (
+                      <motion.div
+                        className="absolute top-4 right-4 w-3 h-3 bg-[#FBBF24] rounded-full"
+                        animate={{
+                          scale: [1, 1.3, 1],
+                          opacity: [1, 0.7, 1],
+                        }}
+                        transition={{
+                          duration: 2,
+                          repeat: Infinity,
+                        }}
+                      />
+                    )}
+
                     {/* Border Glow */}
                     <motion.div
                       className="absolute inset-0 rounded-2xl border-2 border-[#FBBF24]/40 opacity-0 group-hover:opacity-100"
                       animate={{
-                        boxShadow: activeMode === 'pending' 
-                          ? '0 0 30px rgba(251, 191, 36, 0.4)' 
+                        boxShadow: activeMode === 'pending'
+                          ? '0 0 30px rgba(251, 191, 36, 0.4)'
                           : '0 0 0px rgba(251, 191, 36, 0)',
                       }}
                       transition={{ duration: 0.3 }}
@@ -349,7 +481,9 @@ export default function Duels() {
                       Pending Challenges
                     </h3>
                     <p className="text-[14px] text-[#9CA3AF] mb-6 leading-relaxed">
-                      Accept incoming duel requests.
+                      {pendingChallenges.length > 0
+                        ? `You have ${pendingChallenges.length} pending challenge${pendingChallenges.length > 1 ? 's' : ''}.`
+                        : 'No pending challenges right now.'}
                     </p>
 
                     {/* Request List */}
@@ -360,16 +494,15 @@ export default function Duels() {
                           className="flex items-center justify-between p-3 bg-white/5 border border-white/10 rounded-xl"
                         >
                           <div className="flex items-center gap-3">
-                            <div 
-                              className="w-10 h-10 rounded-full border-2 border-white/20"
-                              style={{ backgroundColor: challenge.avatar }}
+                            <div
+                              className="w-10 h-10 rounded-full border-2 border-white/20 bg-gradient-to-br from-[#8B5CF6] to-[#6366F1]"
                             />
                             <div>
                               <p className="text-[13px] font-semibold text-[#F3F4F6]">
-                                {challenge.name}
+                                {challenge.challenger_name || 'Unknown'}
                               </p>
                               <p className="text-[11px] text-[#9CA3AF]">
-                                Level {challenge.level} • {challenge.subject}
+                                {challenge.challenger_xp || 0} XP
                               </p>
                             </div>
                           </div>
@@ -377,6 +510,7 @@ export default function Duels() {
                             <motion.button
                               whileHover={{ scale: 1.1 }}
                               whileTap={{ scale: 0.9 }}
+                              onClick={() => handleAccept(challenge.id)}
                               className="p-2 bg-[#10B981]/20 border border-[#10B981]/40 rounded-lg hover:bg-[#10B981]/30 transition-colors"
                             >
                               <CheckCircle size={16} className="text-[#10B981]" />
@@ -384,6 +518,7 @@ export default function Duels() {
                             <motion.button
                               whileHover={{ scale: 1.1 }}
                               whileTap={{ scale: 0.9 }}
+                              onClick={() => handleDecline(challenge.id)}
                               className="p-2 bg-[#EF4444]/20 border border-[#EF4444]/40 rounded-lg hover:bg-[#EF4444]/30 transition-colors"
                             >
                               <X size={16} className="text-[#EF4444]" />
@@ -403,7 +538,7 @@ export default function Duels() {
                     onHoverStart={() => setActiveMode('ai')}
                     onHoverEnd={() => setActiveMode(null)}
                     className="relative bg-[rgba(12,8,36,0.7)] backdrop-blur-xl rounded-2xl border border-white/12 p-8 overflow-hidden group cursor-pointer"
-                    onClick={() => navigate('/duels/match')}
+                    onClick={handleAiMatch}
                   >
                     {/* Tech Pattern */}
                     <div className="absolute inset-0 opacity-5">
@@ -412,7 +547,7 @@ export default function Duels() {
                         backgroundSize: '20px 20px'
                       }} />
                     </div>
-                    
+
                     {/* Darker Glow */}
                     <motion.div
                       className="absolute top-0 right-0 w-[200px] h-[200px] bg-gradient-to-bl from-[#8B5CF6]/20 to-transparent rounded-full blur-[60px]"
@@ -422,13 +557,13 @@ export default function Duels() {
                       }}
                       transition={{ duration: 0.3 }}
                     />
-                    
+
                     {/* Border Glow */}
                     <motion.div
                       className="absolute inset-0 rounded-2xl border-2 border-[#8B5CF6]/40 opacity-0 group-hover:opacity-100"
                       animate={{
-                        boxShadow: activeMode === 'ai' 
-                          ? '0 0 30px rgba(139, 92, 246, 0.4)' 
+                        boxShadow: activeMode === 'ai'
+                          ? '0 0 30px rgba(139, 92, 246, 0.4)'
                           : '0 0 0px rgba(139, 92, 246, 0)',
                       }}
                       transition={{ duration: 0.3 }}
@@ -458,9 +593,10 @@ export default function Duels() {
                     <motion.button
                       whileHover={{ scale: 1.05 }}
                       whileTap={{ scale: 0.95 }}
-                      className="w-full py-3 bg-[#8B5CF6] text-white rounded-xl font-semibold text-[14px] shadow-[0_4px_16px_rgba(139,92,246,0.3)] hover:shadow-[0_6px_24px_rgba(139,92,246,0.4)] transition-all"
+                      disabled={loading.ai}
+                      className="w-full py-3 bg-[#8B5CF6] text-white rounded-xl font-semibold text-[14px] shadow-[0_4px_16px_rgba(139,92,246,0.3)] hover:shadow-[0_6px_24px_rgba(139,92,246,0.4)] transition-all disabled:opacity-60"
                     >
-                      Start AI Duel
+                      {loading.ai ? <Loader size={16} className="animate-spin mx-auto" /> : 'Start AI Duel'}
                     </motion.button>
                   </motion.div>
                 </div>
@@ -476,15 +612,15 @@ export default function Duels() {
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="p-4 bg-white/5 rounded-xl border border-white/10">
                       <p className="text-[12px] text-[#9CA3AF] mb-1">Total Duels</p>
-                      <p className="text-[24px] font-bold text-[#F3F4F6]">47</p>
+                      <p className="text-[24px] font-bold text-[#F3F4F6]">{activity.totalDuels}</p>
                     </div>
                     <div className="p-4 bg-white/5 rounded-xl border border-white/10">
                       <p className="text-[12px] text-[#9CA3AF] mb-1">Win Rate</p>
-                      <p className="text-[24px] font-bold text-[#10B981]">68%</p>
+                      <p className="text-[24px] font-bold text-[#10B981]">{activity.winRate}%</p>
                     </div>
                     <div className="p-4 bg-white/5 rounded-xl border border-white/10">
                       <p className="text-[12px] text-[#9CA3AF] mb-1">Ranking</p>
-                      <p className="text-[24px] font-bold text-[#FBBF24]">#142</p>
+                      <p className="text-[24px] font-bold text-[#FBBF24]">#{activity.rank}</p>
                     </div>
                   </div>
                 </motion.div>

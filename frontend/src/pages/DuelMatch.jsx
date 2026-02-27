@@ -1,131 +1,158 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router';
+import { useNavigate, useLocation } from 'react-router';
 import { motion, AnimatePresence } from 'motion/react';
 import { SpaceBackground } from '../components/SpaceBackground';
 import { Clock, CheckCircle, Loader, Zap, TrendingUp, X } from 'lucide-react';
-
-// Mock question data
-const questions = [
-  {
-    id: 1,
-    question: 'A projectile is thrown horizontally with velocity 20 m/s from a height of 45 m. What is the time taken to reach the ground?',
-    options: ['2 s', '3 s', '4 s', '5 s'],
-    correctAnswer: 1,
-    explanation: 'Using h = ½gt², we get t = √(2h/g) = √(2×45/10) = 3 s',
-  },
-  {
-    id: 2,
-    question: 'At what angle should a projectile be launched to achieve maximum range?',
-    options: ['30°', '45°', '60°', '90°'],
-    correctAnswer: 1,
-    explanation: 'Maximum range occurs at 45° launch angle for projectiles on level ground.',
-  },
-  {
-    id: 3,
-    question: 'A ball is projected at 45° with initial velocity 40 m/s. Calculate the maximum height. (g = 10 m/s²)',
-    options: ['20 m', '40 m', '60 m', '80 m'],
-    correctAnswer: 0,
-    explanation: 'Max height H = (u²sin²θ)/(2g) = (40²×0.5)/(2×10) = 20 m',
-  },
-  {
-    id: 4,
-    question: 'In projectile motion, which component of velocity remains constant?',
-    options: ['Vertical', 'Horizontal', 'Both', 'Neither'],
-    correctAnswer: 1,
-    explanation: 'Horizontal velocity remains constant as there is no horizontal acceleration.',
-  },
-  {
-    id: 5,
-    question: 'A projectile is launched at 60° with speed 50 m/s. What is the horizontal component of velocity?',
-    options: ['25 m/s', '30 m/s', '43.3 m/s', '50 m/s'],
-    correctAnswer: 0,
-    explanation: 'Horizontal component = u×cos(60°) = 50×0.5 = 25 m/s',
-  },
-];
+import client from '../api/client';
 
 export default function DuelMatch() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const duelId = location.state?.duelId;
+
+  const [duelData, setDuelData] = useState(null);
+  const [questions, setQuestions] = useState([]);
+  const [opponent, setOpponent] = useState({ username: 'Opponent' });
   const [currentRound, setCurrentRound] = useState(1);
   const [timeLeft, setTimeLeft] = useState(30);
   const [selectedAnswer, setSelectedAnswer] = useState(null);
   const [submitted, setSubmitted] = useState(false);
   const [showRoundResult, setShowRoundResult] = useState(false);
   const [isCorrect, setIsCorrect] = useState(false);
+  const [correctAnswerIndex, setCorrectAnswerIndex] = useState(null);
   const [playerScore, setPlayerScore] = useState(0);
   const [opponentScore, setOpponentScore] = useState(0);
   const [playerState, setPlayerState] = useState('solving');
   const [opponentState, setOpponentState] = useState('solving');
+  const [loadingDuel, setLoadingDuel] = useState(true);
+  const [roundResults, setRoundResults] = useState([]);
 
+  const totalRounds = questions.length || 10;
   const currentQuestion = questions[currentRound - 1];
-  const totalRounds = 5;
 
-  // Timer countdown
+  // ── Fetch duel data on mount ──────────────────────────────────────────────
   useEffect(() => {
+    if (!duelId) { navigate('/duels'); return; }
+
+    client.get(`/duels/${duelId}`)
+      .then(res => {
+        setDuelData(res.data.duel);
+        setQuestions(res.data.questions);
+        setOpponent(res.data.opponent);
+        setPlayerScore(res.data.duel.playerScore || 0);
+        setOpponentScore(res.data.duel.opponentScore || 0);
+        setLoadingDuel(false);
+
+        // Preload images
+        res.data.questions.forEach(q => {
+          if (q.content?.image_url) {
+            const img = new Image();
+            img.src = q.content.image_url;
+          }
+        });
+      })
+      .catch(err => {
+        console.error('Failed to load duel:', err);
+        navigate('/duels');
+      });
+  }, [duelId]);
+
+  // ── Timer countdown ───────────────────────────────────────────────────────
+  useEffect(() => {
+    if (loadingDuel || !currentQuestion) return;
+
     if (timeLeft > 0 && !submitted) {
       const timer = setTimeout(() => setTimeLeft(timeLeft - 1), 1000);
       return () => clearTimeout(timer);
     } else if (timeLeft === 0 && !submitted) {
       handleSubmit();
     }
-  }, [timeLeft, submitted]);
+  }, [timeLeft, submitted, loadingDuel, currentQuestion]);
 
-  // Simulate opponent answering
+  // ── Simulate opponent answering ───────────────────────────────────────────
   useEffect(() => {
-    if (!submitted) {
-      const opponentTimer = setTimeout(() => {
-        setOpponentState('submitted');
-      }, Math.random() * 5000 + 3000); // Random 3-8 seconds
-      return () => clearTimeout(opponentTimer);
-    }
-  }, [currentRound, submitted]);
+    if (loadingDuel || !currentQuestion || submitted) return;
 
-  const handleSubmit = () => {
+    const opponentTimer = setTimeout(() => {
+      setOpponentState('submitted');
+    }, Math.random() * 5000 + 3000);
+    return () => clearTimeout(opponentTimer);
+  }, [currentRound, submitted, loadingDuel, currentQuestion]);
+
+  // ── Submit answer ─────────────────────────────────────────────────────────
+  const handleSubmit = async () => {
     if (selectedAnswer === null && timeLeft > 0) return;
-    
+    if (!currentQuestion) return;
+
     setSubmitted(true);
     setPlayerState('submitted');
     setOpponentState('submitted');
 
-    // Calculate points
-    const isCorrect = selectedAnswer === currentQuestion.correctAnswer;
-    setIsCorrect(isCorrect);
-    if (isCorrect) {
-      const points = Math.max(100, timeLeft * 10);
-      setPlayerScore(playerScore + points);
+    try {
+      const res = await client.post(`/duels/${duelId}/submit`, {
+        questionId: currentQuestion.id,
+        selectedAnswerIndex: selectedAnswer ?? -1,
+      });
+
+      const { isCorrect: correct, points, correctAnswerIndex: correctIdx, isLastQuestion } = res.data;
+      setIsCorrect(correct);
+      setCorrectAnswerIndex(correctIdx);
+      if (correct) setPlayerScore(prev => prev + points);
+
+      // Simulate opponent score for AI duels
+      const opponentCorrect = Math.random() > 0.35;
+      if (opponentCorrect) setOpponentScore(prev => prev + 100);
+
+      // Store round result for DuelResult
+      setRoundResults(prev => [...prev, {
+        round: currentRound,
+        correct,
+        timeTaken: 30 - timeLeft,
+        question: currentQuestion.content?.text || `Question ${currentRound}`,
+        options: currentQuestion.content?.options || ['A', 'B', 'C', 'D'],
+        correctAnswer: correctIdx,
+        userAnswer: selectedAnswer,
+        imageUrl: currentQuestion.content?.image_url,
+      }]);
+
+      // Show result overlay
+      setTimeout(() => setShowRoundResult(true), 1000);
+
+      // Auto-advance
+      const advanceDelay = correct ? 2500 : 4500;
+      setTimeout(() => {
+        if (currentRound < totalRounds && !isLastQuestion) {
+          setCurrentRound(prev => prev + 1);
+          setTimeLeft(30);
+          setSelectedAnswer(null);
+          setSubmitted(false);
+          setShowRoundResult(false);
+          setCorrectAnswerIndex(null);
+          setPlayerState('solving');
+          setOpponentState('solving');
+        } else {
+          navigate('/duels/result', {
+            state: {
+              duelId,
+              playerScore: playerScore + (correct ? points : 0),
+              opponentScore: opponentScore + (opponentCorrect ? 100 : 0),
+              roundData: [...roundResults, {
+                round: currentRound,
+                correct,
+                timeTaken: 30 - timeLeft,
+                question: currentQuestion.content?.text || `Question ${currentRound}`,
+                options: currentQuestion.content?.options || ['A', 'B', 'C', 'D'],
+                correctAnswer: correctIdx,
+                userAnswer: selectedAnswer,
+                imageUrl: currentQuestion.content?.image_url,
+              }],
+            },
+          });
+        }
+      }, advanceDelay);
+    } catch (err) {
+      console.error('Submit error:', err);
     }
-
-    // Simulate opponent score
-    const opponentCorrect = Math.random() > 0.3;
-    if (opponentCorrect) {
-      const opponentPoints = Math.max(100, Math.floor(Math.random() * 300));
-      setOpponentScore(opponentScore + opponentPoints);
-    }
-
-    // Show result overlay
-    setTimeout(() => {
-      setShowRoundResult(true);
-    }, 1000);
-
-    // Auto-advance to next round or results (different timing for correct vs wrong)
-    const advanceDelay = isCorrect ? 2500 : 4500; // Correct: 2.5s, Wrong: 4.5s
-    setTimeout(() => {
-      if (currentRound < totalRounds) {
-        setCurrentRound(currentRound + 1);
-        setTimeLeft(30);
-        setSelectedAnswer(null);
-        setSubmitted(false);
-        setShowRoundResult(false);
-        setPlayerState('solving');
-        setOpponentState('solving');
-      } else {
-        navigate('/duels/result', { 
-          state: { 
-            playerScore, 
-            opponentScore: opponentScore + (opponentCorrect ? Math.floor(Math.random() * 300) : 0)
-          } 
-        });
-      }
-    }, advanceDelay);
   };
 
   const getStateLabel = (state) => {
@@ -145,6 +172,19 @@ export default function DuelMatch() {
       default: return 'text-[#9CA3AF]';
     }
   };
+
+  // ── Loading State ─────────────────────────────────────────────────────────
+  if (loadingDuel) {
+    return (
+      <div className="relative min-h-screen w-full overflow-hidden flex items-center justify-center">
+        <SpaceBackground />
+        <div className="relative z-10 text-center">
+          <Loader size={48} className="text-[#8B5CF6] animate-spin mx-auto mb-4" />
+          <p className="text-[16px] text-[#9CA3AF]">Loading duel...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="relative min-h-screen w-full overflow-hidden">
@@ -186,7 +226,7 @@ export default function DuelMatch() {
           <div className="max-w-7xl mx-auto">
             <div className="flex items-center justify-between mb-4">
               <h1 className="text-[20px] font-bold text-[#F3F4F6]">
-                Physics Duel — Motion in 2D
+                {duelData?.duelType === 'ai' ? 'AI Duel' : `Duel vs ${opponent.username}`}
               </h1>
               <div className="flex items-center gap-4">
                 <div className="flex items-center gap-2 px-4 py-2 bg-white/5 border border-white/10 rounded-lg">
@@ -195,7 +235,7 @@ export default function DuelMatch() {
                     {currentRound}/{totalRounds}
                   </span>
                 </div>
-                <motion.div 
+                <motion.div
                   className="flex items-center gap-2 px-4 py-2 bg-[#EF4444]/20 border border-[#EF4444]/40 rounded-lg"
                   animate={{
                     scale: timeLeft <= 5 ? [1, 1.05, 1] : 1,
@@ -253,9 +293,13 @@ export default function DuelMatch() {
               </div>
 
               {/* Name & Level */}
-              <h3 className="text-[16px] font-bold text-[#F3F4F6] mb-1">Alex Kumar</h3>
+              <h3 className="text-[16px] font-bold text-[#F3F4F6] mb-1">
+                {duelData?.duelType === 'ai' ? 'Clario AI' : opponent.username}
+              </h3>
               <div className="px-3 py-1 bg-[#EC4899]/20 border border-[#EC4899]/40 rounded-lg mb-4">
-                <span className="text-[12px] font-semibold text-[#EC4899]">Level 14</span>
+                <span className="text-[12px] font-semibold text-[#EC4899]">
+                  {duelData?.duelType === 'ai' ? 'AI Bot' : 'Challenger'}
+                </span>
               </div>
 
               {/* Score */}
@@ -282,100 +326,115 @@ export default function DuelMatch() {
             animate={{ opacity: 1, y: 0 }}
             className="bg-[rgba(12,8,36,0.8)] backdrop-blur-xl rounded-2xl border border-white/12 p-8 shadow-[0_8px_32px_rgba(0,0,0,0.4)]"
           >
-            {/* Question */}
-            <div className="mb-8">
-              <h2 className="text-[18px] font-bold text-[#F3F4F6] mb-4 leading-relaxed">
-                {currentQuestion.question}
-              </h2>
-            </div>
-
-            {/* Options */}
-            <div className="space-y-3 mb-8">
-              {currentQuestion.options.map((option, index) => (
-                <motion.button
-                  key={index}
-                  onClick={() => !submitted && setSelectedAnswer(index)}
-                  disabled={submitted}
-                  whileHover={{ scale: submitted ? 1 : 1.01 }}
-                  whileTap={{ scale: submitted ? 1 : 0.99 }}
-                  className={`
-                    w-full p-4 rounded-xl text-left transition-all duration-200
-                    ${submitted 
-                      ? index === currentQuestion.correctAnswer
-                        ? 'bg-[#10B981]/20 border-2 border-[#10B981]'
-                        : selectedAnswer === index
-                          ? 'bg-[#EF4444]/20 border-2 border-[#EF4444]'
-                          : 'bg-white/5 border-2 border-white/10 opacity-50'
-                      : selectedAnswer === index
-                        ? 'bg-[#6366F1]/20 border-2 border-[#6366F1] shadow-[0_0_20px_rgba(99,102,241,0.3)]'
-                        : 'bg-white/5 border-2 border-white/10 hover:border-white/20 cursor-pointer'
-                    }
-                    ${submitted && 'cursor-not-allowed'}
-                  `}
-                >
-                  <div className="flex items-center gap-3">
-                    {/* Option Letter */}
-                    <div className={`
-                      w-8 h-8 rounded-lg flex items-center justify-center font-bold text-[14px]
-                      ${submitted
-                        ? index === currentQuestion.correctAnswer
-                          ? 'bg-[#10B981] text-white'
-                          : selectedAnswer === index
-                            ? 'bg-[#EF4444] text-white'
-                            : 'bg-white/10 text-[#9CA3AF]'
-                        : selectedAnswer === index
-                          ? 'bg-[#6366F1] text-white'
-                          : 'bg-white/10 text-[#9CA3AF]'
-                      }
-                    `}>
-                      {String.fromCharCode(65 + index)}
+            {currentQuestion && (
+              <>
+                {/* Question */}
+                <div className="mb-8">
+                  {/* Question image */}
+                  {currentQuestion.content?.image_url && (
+                    <div className="mb-6 rounded-xl overflow-hidden border border-white/10 bg-white/5">
+                      <img
+                        src={currentQuestion.content.image_url}
+                        alt={`Question ${currentRound}`}
+                        className="w-full max-h-[300px] object-contain bg-white p-2"
+                      />
                     </div>
-                    {/* Option Text */}
-                    <span className={`
-                      text-[14px]
-                      ${submitted
-                        ? index === currentQuestion.correctAnswer
-                          ? 'text-[#10B981] font-semibold'
-                          : selectedAnswer === index
-                            ? 'text-[#EF4444] font-semibold'
-                            : 'text-[#9CA3AF]'
-                        : selectedAnswer === index
-                          ? 'text-[#F3F4F6] font-medium'
-                          : 'text-[#D1D5DB]'
-                      }
-                    `}>
-                      {option}
-                    </span>
-                  </div>
-                </motion.button>
-              ))}
-            </div>
+                  )}
 
-            {/* Submit Button */}
-            {!submitted ? (
-              <motion.button
-                onClick={handleSubmit}
-                disabled={selectedAnswer === null}
-                whileHover={{ scale: selectedAnswer === null ? 1 : 1.02 }}
-                whileTap={{ scale: selectedAnswer === null ? 1 : 0.98 }}
-                className={`
-                  w-full py-4 rounded-xl font-bold text-[16px]
-                  transition-all duration-200
-                  ${selectedAnswer === null
-                    ? 'bg-white/5 border border-white/10 text-[#9CA3AF] cursor-not-allowed'
-                    : 'bg-[#10B981] text-white shadow-[0_4px_20px_rgba(16,185,129,0.4)] hover:shadow-[0_6px_28px_rgba(16,185,129,0.5)]'
-                  }
-                `}
-              >
-                Submit Answer
-              </motion.button>
-            ) : (
-              <div className="text-center">
-                <div className="inline-flex items-center gap-2 px-6 py-3 bg-[#10B981]/20 border border-[#10B981]/40 rounded-xl">
-                  <CheckCircle size={20} className="text-[#10B981]" />
-                  <span className="text-[14px] font-semibold text-[#10B981]">Answer Locked</span>
+                  <h2 className="text-[18px] font-bold text-[#F3F4F6] mb-4 leading-relaxed">
+                    {currentQuestion.content?.text || `Question ${currentRound}`}
+                  </h2>
                 </div>
-              </div>
+
+                {/* Options */}
+                <div className="space-y-3 mb-8">
+                  {(currentQuestion.content?.options || ['A', 'B', 'C', 'D']).map((option, index) => (
+                    <motion.button
+                      key={index}
+                      onClick={() => !submitted && setSelectedAnswer(index)}
+                      disabled={submitted}
+                      whileHover={{ scale: submitted ? 1 : 1.01 }}
+                      whileTap={{ scale: submitted ? 1 : 0.99 }}
+                      className={`
+                        w-full p-4 rounded-xl text-left transition-all duration-200
+                        ${submitted
+                          ? index === correctAnswerIndex
+                            ? 'bg-[#10B981]/20 border-2 border-[#10B981]'
+                            : selectedAnswer === index
+                              ? 'bg-[#EF4444]/20 border-2 border-[#EF4444]'
+                              : 'bg-white/5 border-2 border-white/10 opacity-50'
+                          : selectedAnswer === index
+                            ? 'bg-[#6366F1]/20 border-2 border-[#6366F1] shadow-[0_0_20px_rgba(99,102,241,0.3)]'
+                            : 'bg-white/5 border-2 border-white/10 hover:border-white/20 cursor-pointer'
+                        }
+                        ${submitted && 'cursor-not-allowed'}
+                      `}
+                    >
+                      <div className="flex items-center gap-3">
+                        {/* Option Letter */}
+                        <div className={`
+                          w-8 h-8 rounded-lg flex items-center justify-center font-bold text-[14px]
+                          ${submitted
+                            ? index === correctAnswerIndex
+                              ? 'bg-[#10B981] text-white'
+                              : selectedAnswer === index
+                                ? 'bg-[#EF4444] text-white'
+                                : 'bg-white/10 text-[#9CA3AF]'
+                            : selectedAnswer === index
+                              ? 'bg-[#6366F1] text-white'
+                              : 'bg-white/10 text-[#9CA3AF]'
+                          }
+                        `}>
+                          {String.fromCharCode(65 + index)}
+                        </div>
+                        {/* Option Text */}
+                        <span className={`
+                          text-[14px]
+                          ${submitted
+                            ? index === correctAnswerIndex
+                              ? 'text-[#10B981] font-semibold'
+                              : selectedAnswer === index
+                                ? 'text-[#EF4444] font-semibold'
+                                : 'text-[#9CA3AF]'
+                            : selectedAnswer === index
+                              ? 'text-[#F3F4F6] font-medium'
+                              : 'text-[#D1D5DB]'
+                          }
+                        `}>
+                          {option}
+                        </span>
+                      </div>
+                    </motion.button>
+                  ))}
+                </div>
+
+                {/* Submit Button */}
+                {!submitted ? (
+                  <motion.button
+                    onClick={handleSubmit}
+                    disabled={selectedAnswer === null}
+                    whileHover={{ scale: selectedAnswer === null ? 1 : 1.02 }}
+                    whileTap={{ scale: selectedAnswer === null ? 1 : 0.98 }}
+                    className={`
+                      w-full py-4 rounded-xl font-bold text-[16px]
+                      transition-all duration-200
+                      ${selectedAnswer === null
+                        ? 'bg-white/5 border border-white/10 text-[#9CA3AF] cursor-not-allowed'
+                        : 'bg-[#10B981] text-white shadow-[0_4px_20px_rgba(16,185,129,0.4)] hover:shadow-[0_6px_28px_rgba(16,185,129,0.5)]'
+                      }
+                    `}
+                  >
+                    Submit Answer
+                  </motion.button>
+                ) : (
+                  <div className="text-center">
+                    <div className="inline-flex items-center gap-2 px-6 py-3 bg-[#10B981]/20 border border-[#10B981]/40 rounded-xl">
+                      <CheckCircle size={20} className="text-[#10B981]" />
+                      <span className="text-[14px] font-semibold text-[#10B981]">Answer Locked</span>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </motion.div>
 
@@ -407,7 +466,7 @@ export default function DuelMatch() {
               {/* Name & Level */}
               <h3 className="text-[16px] font-bold text-[#F3F4F6] mb-1">You</h3>
               <div className="px-3 py-1 bg-[#8B5CF6]/20 border border-[#8B5CF6]/40 rounded-lg mb-4">
-                <span className="text-[12px] font-semibold text-[#8B5CF6]">Level 12</span>
+                <span className="text-[12px] font-semibold text-[#8B5CF6]">Player</span>
               </div>
 
               {/* Score */}
@@ -417,14 +476,14 @@ export default function DuelMatch() {
               </div>
 
               {/* Streak (if applicable) */}
-              {playerScore > 0 && selectedAnswer === currentQuestion.correctAnswer && (
+              {isCorrect && submitted && (
                 <motion.div
                   initial={{ scale: 0 }}
                   animate={{ scale: 1 }}
                   className="flex items-center gap-2 px-3 py-2 bg-[#FBBF24]/20 border border-[#FBBF24]/40 rounded-lg"
                 >
                   <TrendingUp size={16} className="text-[#FBBF24]" />
-                  <span className="text-[12px] font-semibold text-[#FBBF24]">Streak!</span>
+                  <span className="text-[12px] font-semibold text-[#FBBF24]">Correct!</span>
                 </motion.div>
               )}
 
@@ -458,14 +517,13 @@ export default function DuelMatch() {
               transition={{ type: "spring", damping: 25, stiffness: 300 }}
               className={`
                 bg-[rgba(12,8,36,0.95)] backdrop-blur-xl rounded-2xl p-8 max-w-xl mx-4
-                ${isCorrect 
+                ${isCorrect
                   ? 'border-2 border-[#10B981]/40 shadow-[0_0_40px_rgba(16,185,129,0.3)]'
                   : 'border-2 border-[#EF4444]/40 shadow-[0_0_40px_rgba(239,68,68,0.3)]'
                 }
               `}
             >
               {isCorrect ? (
-                // CORRECT ANSWER POPUP
                 <>
                   {/* Status */}
                   <div className="text-center mb-6">
@@ -489,9 +547,7 @@ export default function DuelMatch() {
                   >
                     <div className="flex items-center justify-center gap-2 mb-2">
                       <Zap size={28} className="text-[#FBBF24]" />
-                      <span className="text-[36px] font-bold text-[#FBBF24]">
-                        +{Math.max(100, timeLeft * 10)}
-                      </span>
+                      <span className="text-[36px] font-bold text-[#FBBF24]">+100</span>
                     </div>
                     <p className="text-[13px] text-[#9CA3AF]">Points earned</p>
                   </motion.div>
@@ -514,7 +570,6 @@ export default function DuelMatch() {
                   </motion.div>
                 </>
               ) : (
-                // WRONG ANSWER POPUP
                 <>
                   {/* Status */}
                   <div className="text-center mb-6">
@@ -527,29 +582,21 @@ export default function DuelMatch() {
                       <X size={24} className="text-[#EF4444]" />
                       <span className="text-[18px] font-bold text-[#EF4444]">Incorrect</span>
                     </motion.div>
-                    
-                    {/* Correct Answer */}
-                    <motion.div
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      transition={{ delay: 0.2 }}
-                      className="inline-flex items-center gap-2 px-4 py-2 bg-[#10B981]/15 border border-[#10B981]/30 rounded-lg mb-3"
-                    >
-                      <CheckCircle size={18} className="text-[#10B981]" />
-                      <span className="text-[14px] font-semibold text-[#10B981]">
-                        Correct: {currentQuestion.options[currentQuestion.correctAnswer]}
-                      </span>
-                    </motion.div>
 
-                    {/* Concept Hint */}
-                    <motion.p
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      transition={{ delay: 0.3 }}
-                      className="text-[13px] text-[#D1D5DB] leading-relaxed"
-                    >
-                      {currentQuestion.explanation}
-                    </motion.p>
+                    {/* Correct Answer */}
+                    {correctAnswerIndex !== null && currentQuestion?.content?.options && (
+                      <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ delay: 0.2 }}
+                        className="inline-flex items-center gap-2 px-4 py-2 bg-[#10B981]/15 border border-[#10B981]/30 rounded-lg mb-3"
+                      >
+                        <CheckCircle size={18} className="text-[#10B981]" />
+                        <span className="text-[14px] font-semibold text-[#10B981]">
+                          Correct: {currentQuestion.content.options[correctAnswerIndex]}
+                        </span>
+                      </motion.div>
+                    )}
                   </div>
 
                   {/* Score Comparison */}

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router';
 import { motion } from 'motion/react';
 import { SpaceBackground } from '../components/SpaceBackground';
@@ -21,6 +21,19 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const { currentUser, logout } = useAuth();
   const [profile, setProfile] = useState(null);
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const profileMenuRef = useRef(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (profileMenuRef.current && !profileMenuRef.current.contains(e.target)) {
+        setShowProfileMenu(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   useEffect(() => {
     client.get('/users/me')
@@ -129,7 +142,25 @@ export default function Dashboard() {
               </div>
 
               {/* Profile Avatar */}
-              <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#7C3AED] to-[#6366F1] border-2 border-white/20" />
+              <div className="relative" ref={profileMenuRef}>
+                <button
+                  onClick={() => setShowProfileMenu(prev => !prev)}
+                  className="w-9 h-9 rounded-full bg-gradient-to-br from-[#7C3AED] to-[#6366F1] border-2 border-white/20 cursor-pointer hover:border-white/40 transition-all"
+                />
+
+                {/* Dropdown */}
+                {showProfileMenu && (
+                  <div className="absolute right-0 top-12 w-44 bg-[rgba(12,8,36,0.95)] backdrop-blur-xl border border-white/12 rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] py-2 z-50">
+                    <button
+                      onClick={handleSignOut}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-[13px] font-medium text-[#F87171] hover:bg-white/8 transition-colors"
+                    >
+                      <LogOut size={16} />
+                      <span>Sign Out</span>
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </header>
 

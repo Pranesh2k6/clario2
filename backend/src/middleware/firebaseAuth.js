@@ -22,10 +22,18 @@ async function firebaseAuth(req, res, next) {
 
     try {
         const decoded = await admin.auth().verifyIdToken(idToken);
+
+        // Look up the Postgres user ID by email
+        const { query } = require('../config/db');
+        const dbUser = await query('SELECT id, username FROM users WHERE email = $1', [decoded.email]);
+        const dbId = dbUser.rows.length > 0 ? dbUser.rows[0].id : null;
+
         req.user = {
             uid: decoded.uid,
             email: decoded.email,
             name: decoded.name || null,
+            dbId,
+            username: dbUser.rows[0]?.username || null,
         };
         next();
     } catch (err) {
