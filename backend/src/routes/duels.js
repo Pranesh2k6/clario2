@@ -128,12 +128,41 @@ router.post('/random-match', firebaseAuth, async (req, res) => {
     const playerId = req.user.dbId;
     const { subjectIds } = req.body;
 
-    // Check if already in queue
+    // ── FIX 1: Check if this player already has an active random duel ────────
+    // This prevents the race condition where Player A's poller re-queues them
+    // after Player B already created a duel for both of them.
+    try {
+        const existingDuel = await query(
+            `SELECT * FROM duels
+             WHERE duel_type = 'random' AND status = 'active'
+             AND (player_1_id = $1 OR player_2_id = $1)
+             AND started_at > NOW() - INTERVAL '5 minutes'
+             ORDER BY started_at DESC LIMIT 1`,
+            [playerId]
+        );
+        if (existingDuel.rows.length > 0) {
+            return res.status(200).json({ duel: existingDuel.rows[0], matched: true });
+        }
+    } catch (err) {
+        console.error('[Duels /random-match] DB check error:', err.message);
+    }
+
+    // Remove player from queue if they're already in it (prevents duplicates)
     const existingIdx = matchmakingQueue.findIndex(e => e.playerId === playerId);
     if (existingIdx !== -1) matchmakingQueue.splice(existingIdx, 1);
 
-    // Try to find a match
-    const matchIdx = matchmakingQueue.findIndex(e => e.playerId !== playerId);
+    // ── FIX 3: Strict subject matching ───────────────────────────────────────
+    // Only match players whose selected subjects overlap, or if either party
+    // selected no subjects (wildcard = match with anyone).
+    const matchIdx = matchmakingQueue.findIndex(e => {
+        if (e.playerId === playerId) return false;
+        const mySubjects = subjectIds || [];
+        const theirSubjects = e.subjectIds || [];
+        // If either player selected no subjects, it's a wildcard match
+        if (mySubjects.length === 0 || theirSubjects.length === 0) return true;
+        // Otherwise, require at least one overlapping subject
+        return mySubjects.some(s => theirSubjects.includes(s));
+    });
 
     if (matchIdx !== -1) {
         // Match found!
@@ -154,9 +183,14 @@ router.post('/random-match', firebaseAuth, async (req, res) => {
 
             const duel = result.rows[0];
 
-            // Notify both players
+            // ── FIX 2: Notify BOTH players by their specific player IDs ──────
             const io = req.app.get('io');
-            io?.emit('duel:match_found', { duelId: duel.id, duelCode: duel.duel_code });
+            io?.emit('duel:match_found', {
+                duelId: duel.id,
+                duelCode: duel.duel_code,
+                player1Id: opponent.playerId,
+                player2Id: playerId,
+            });
 
             return res.status(201).json({ duel, matched: true });
         } catch (err) {

@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router';
 import { motion } from 'motion/react';
 import { SpaceBackground } from '../components/SpaceBackground';
 import { LayoutDashboard, Map, FileText, Swords, Calendar, BarChart3, Settings, Flame, Zap, Users, UserPlus, Gamepad2, Clock, Trophy, CheckCircle, X, Loader } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import client from '../api/client';
+import { connectSocket, onMatchFound } from '../api/socket';
 const clarioLogo = '';
 
 const navItems = [
@@ -30,12 +31,29 @@ export default function Duels() {
   const [selectedSubjects, setSelectedSubjects] = useState([]);
   const [loading, setLoading] = useState({ random: false, ai: false, friend: false });
   const [matchmakingStatus, setMatchmakingStatus] = useState(null);
+  const pollingRef = useRef(null);
 
   // Fetch data on mount
   useEffect(() => {
     client.get('/duels/pending').then(r => setPendingChallenges(r.data.duels)).catch(() => { });
     client.get('/duels/recent-activity').then(r => setActivity(r.data)).catch(() => { });
     client.get('/duels/subjects/list').then(r => setSubjects(r.data.subjects)).catch(() => { });
+  }, []);
+
+  // ── Socket.io: Listen for match_found from the server ─────────────────────
+  // This is the FIX for the one-sided match bug. When the SERVER creates a duel
+  // (because the other player's request triggered the match), this listener
+  // catches it and immediately navigates — no more relying solely on polling.
+  useEffect(() => {
+    const socket = connectSocket();
+    const cleanup = onMatchFound((data) => {
+      // Clear the polling interval immediately
+      if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
+      setMatchmakingStatus(null);
+      setLoading(l => ({ ...l, random: false }));
+      navigate('/duels/match', { state: { duelId: data.duelId } });
+    });
+    return () => cleanup();
   }, []);
 
   // Toggle subject selection
@@ -55,18 +73,20 @@ export default function Duels() {
         navigate(`/duels/match`, { state: { duelId: res.data.duel.id } });
       } else {
         setMatchmakingStatus('waiting');
-        // Poll every 3 seconds
+        // Poll every 3 seconds (backup — the socket listener is the primary)
         const interval = setInterval(async () => {
           try {
             const r = await client.post('/duels/random-match', { subjectIds: selectedSubjects });
             if (r.data.matched) {
               clearInterval(interval);
+              pollingRef.current = null;
               navigate(`/duels/match`, { state: { duelId: r.data.duel.id } });
             }
-          } catch { clearInterval(interval); setMatchmakingStatus(null); }
+          } catch { clearInterval(interval); pollingRef.current = null; setMatchmakingStatus(null); }
         }, 3000);
+        pollingRef.current = interval;
         // Timeout after 30 seconds
-        setTimeout(() => { clearInterval(interval); setMatchmakingStatus(null); setLoading(l => ({ ...l, random: false })); }, 30000);
+        setTimeout(() => { clearInterval(interval); pollingRef.current = null; setMatchmakingStatus(null); setLoading(l => ({ ...l, random: false })); }, 30000);
         return;
       }
     } catch (err) {

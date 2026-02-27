@@ -55,3 +55,9 @@ export function onAnswerSubmitted(cb) {
     s.on("duel:answer_submitted", cb);
     return () => s.off("duel:answer_submitted", cb);
 }
+
+export function onMatchFound(cb) {
+    const s = getSocket();
+    s.on("duel:match_found", cb);
+    return () => s.off("duel:match_found", cb);
+}
