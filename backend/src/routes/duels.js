@@ -256,6 +256,59 @@ router.get('/pending', firebaseAuth, async (req, res) => {
     }
 });
 
+// ── POST /accept/:duelId ─────────────────────────────────────────────────────
+// Accept a pending duel challenge.
+router.post('/accept/:duelId', firebaseAuth, async (req, res) => {
+    const playerId = req.user.dbId;
+    const { duelId } = req.params;
+    try {
+        // Only the challenged player (player_2) can accept
+        const result = await query(
+            `UPDATE duels SET status = 'active', updated_at = NOW()
+             WHERE id = $1 AND player_2_id = $2 AND status = 'pending'
+             RETURNING *`,
+            [duelId, playerId]
+        );
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Challenge not found or already handled.' });
+        }
+        const duel = result.rows[0];
+
+        // Notify both players via Socket.io
+        req.app.get('io')?.emit('duel:match_found', {
+            duelId: duel.id,
+            duelCode: duel.duel_code,
+            player1Id: duel.player_1_id,
+            player2Id: duel.player_2_id,
+        });
+
+        return res.json({ duel });
+    } catch (err) {
+        console.error('[Duels /accept] Error:', err.message);
+        return res.status(500).json({ error: 'Internal Server Error' });
+    }
+});
+
+// ── POST /decline/:duelId ────────────────────────────────────────────────────
+// Decline (delete) a pending duel challenge.
+router.post('/decline/:duelId', firebaseAuth, async (req, res) => {
+    const playerId = req.user.dbId;
+    const { duelId } = req.params;
+    try {
+        const result = await query(
+            `DELETE FROM duels WHERE id = $1 AND player_2_id = $2 AND status = 'pending' RETURNING id`,
+            [duelId, playerId]
+        );
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Challenge not found or already handled.' });
+        }
+        return res.json({ message: 'Challenge declined.' });
+    } catch (err) {
+        console.error('[Duels /decline] Error:', err.message);
+        return res.status(500).json({ error: 'Internal Server Error' });
+    }
+});
+
 // ── GET /recent-activity ─────────────────────────────────────────────────────
 // Fetch user's duel stats.
 router.get('/recent-activity', firebaseAuth, async (req, res) => {

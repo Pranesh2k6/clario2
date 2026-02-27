@@ -135,6 +135,27 @@ export default function Duels() {
     setLoading(l => ({ ...l, friend: false }));
   };
 
+  // ── Accept Pending Challenge ──────────────────────────────────────────────
+  const handleAccept = async (duelId) => {
+    try {
+      const res = await client.post(`/duels/accept/${duelId}`);
+      const duel = res.data.duel;
+      navigate(`/duels/match/${duel.id}`, { state: { duelId: duel.id, duelCode: duel.duel_code } });
+    } catch (err) {
+      alert(err.response?.data?.error || 'Could not accept challenge.');
+    }
+  };
+
+  // ── Decline Pending Challenge ─────────────────────────────────────────────
+  const handleDecline = async (duelId) => {
+    try {
+      await client.post(`/duels/decline/${duelId}`);
+      setPendingChallenges(prev => prev.filter(c => c.id !== duelId));
+    } catch (err) {
+      alert(err.response?.data?.error || 'Could not decline challenge.');
+    }
+  };
+
   // ── AI Match ──────────────────────────────────────────────────────────────
   const handleAiMatch = async () => {
     setLoading(l => ({ ...l, ai: true }));
