@@ -15,7 +15,23 @@ export function AuthProvider({ children }) {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        const unsub = onAuthStateChanged(auth, (user) => {
+        const unsub = onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                // Auto-sync: ensure this Firebase user has a Postgres record.
+                // This runs on every page load / refresh, not just on login.
+                try {
+                    const token = await user.getIdToken();
+                    await fetch('/api/v1/auth/sync', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            Authorization: `Bearer ${token}`,
+                        },
+                    });
+                } catch (e) {
+                    console.warn('[AuthContext] Sync failed:', e);
+                }
+            }
             setCurrentUser(user);
             setLoading(false);
         });
