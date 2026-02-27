@@ -128,6 +128,11 @@ router.post('/random-match', firebaseAuth, async (req, res) => {
     const playerId = req.user.dbId;
     const { subjectIds } = req.body;
 
+    // Guard: if the user has no Postgres record, reject early
+    if (!playerId) {
+        return res.status(401).json({ error: 'User not synced to database. Please log out and log in again.' });
+    }
+
     // ── FIX 1: Check if this player already has an active random duel ────────
     // This prevents the race condition where Player A's poller re-queues them
     // after Player B already created a duel for both of them.
