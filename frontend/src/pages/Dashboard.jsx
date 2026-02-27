@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router';
 import { motion } from 'motion/react';
 import { SpaceBackground } from '../components/SpaceBackground';
-import { LayoutDashboard, Map, FileText, Swords, Calendar, BarChart3, Settings, Flame, Zap, ArrowRight, Play } from 'lucide-react';
+import { LayoutDashboard, Map, FileText, Swords, Calendar, BarChart3, Settings, Flame, Zap, ArrowRight, Play, LogOut } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import client from '../api/client';
 import { ProfileDropdown } from '../components/ProfileDropdown';
