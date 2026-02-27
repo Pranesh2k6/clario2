@@ -128,7 +128,7 @@ export default function Planet() {
             {navItems.map((item) => {
               const Icon = item.icon;
               const isActive = false;
-              const isImplemented = ['/dashboard', '/galaxy'].includes(item.path);
+              const isImplemented = ['/dashboard', '/galaxy', '/duels', '/planner'].includes(item.path);
 
               return (
                 <button

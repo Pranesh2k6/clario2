@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router';
 import { motion, AnimatePresence } from 'motion/react';
 import { SpaceBackground } from '../components/SpaceBackground';
@@ -21,7 +21,14 @@ import {
   Flame,
   Loader2
 } from 'lucide-react';
+import {
+  getPlannerSummary, getTasksByDate, createTask,
+  toggleTaskCompletion, getSuggestions, generateSmartPlan,
+} from '../api/planner';
+
 const clarioLogo = '';
+const SUBJECT_ICONS = { Physics: '🌌', Chemistry: '⚗️', Math: '📐' };
+const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 const navItems = [
   { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },
@@ -33,72 +40,48 @@ const navItems = [
   { icon: Settings, label: 'Settings', path: '/settings' },
 ];
 
-// Mock data
-const weekDays = [
-  { day: 'Mon', date: 23, hours: 3, subjects: ['Physics', 'Chemistry'], completed: 2.5, isToday: false },
-  { day: 'Tue', date: 24, hours: 4, subjects: ['Physics', 'Math'], completed: 4, isToday: false },
-  { day: 'Wed', date: 25, hours: 3.5, subjects: ['Chemistry', 'Math'], completed: 2, isToday: true },
-  { day: 'Thu', date: 26, hours: 4, subjects: ['Physics', 'Chemistry'], completed: 0, isToday: false },
-  { day: 'Fri', date: 27, hours: 3, subjects: ['Math', 'Physics'], completed: 0, isToday: false },
-  { day: 'Sat', date: 28, hours: 5, subjects: ['Physics', 'Chemistry', 'Math'], completed: 0, isToday: false },
-  { day: 'Sun', date: 29, hours: 4, subjects: ['Chemistry', 'Math'], completed: 0, isToday: false },
-];
+// ── Date helpers ──────────────────────────────────────────────────────────────
+function getWeekDates() {
+  const now = new Date();
+  const dayOfWeek = now.getDay(); // 0=Sun
+  const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+  const monday = new Date(now);
+  monday.setDate(now.getDate() + mondayOffset);
+  const dates = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    dates.push(d);
+  }
+  return dates;
+}
 
-const todayTasks = [
-  {
-    id: 1,
-    subject: 'Physics',
-    chapter: 'Motion in 2D',
-    mode: 'Learn',
-    time: 45,
-    completed: false,
-    icon: '🌌'
-  },
-  {
-    id: 2,
-    subject: 'Chemistry',
-    chapter: 'Chemical Bonding',
-    mode: 'Practice',
-    time: 30,
-    completed: false,
-    icon: '⚗️'
-  },
-  {
-    id: 3,
-    subject: 'Math',
-    chapter: 'Integration',
-    mode: 'Personalised Quiz',
-    time: 60,
-    completed: true,
-    icon: '📐'
-  },
-];
+function fmt(d) { return d.toISOString().split('T')[0]; }
 
-// Generate month data with realistic heatmap
-const generateMonthData = () => {
-  return Array.from({ length: 28 }, (_, i) => {
-    const dayNum = i + 1;
-    const studyHours = Math.floor(Math.random() * 6); // 0-5 hours
-    const hasTask = studyHours > 0;
-    return {
-      day: dayNum,
-      hours: studyHours,
-      tasks: hasTask ? [
-        { subject: 'Physics', chapter: 'Motion in 2D', mode: 'Learn', time: 45, completed: false },
-        { subject: 'Chemistry', chapter: 'Chemical Bonding', mode: 'Practice', time: 30, completed: dayNum < 25 },
-      ] : [],
-    };
-  });
-};
+function getMonthRange() {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), 1);
+  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  return { start: fmt(start), end: fmt(end), daysInMonth: end.getDate(), monthName: start.toLocaleString('default', { month: 'long' }), year: start.getFullYear() };
+}
 
 export default function StudyPlanner() {
   const navigate = useNavigate();
   const [viewMode, setViewMode] = useState('week');
-  const [selectedDay, setSelectedDay] = useState(2); // Wednesday selected
-  const [tasks, setTasks] = useState(todayTasks);
+  const [tasks, setTasks] = useState([]);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showSmartPlanModal, setShowSmartPlanModal] = useState(false);
   const [isGeneratingPlan, setIsGeneratingPlan] = useState(false);
+
+  // Data from backend
+  const [summary, setSummary] = useState(null);
+  const [suggestions, setSuggestions] = useState([]);
+
+  // Week view
+  const weekDates = getWeekDates();
+  const todayStr = fmt(new Date());
+  const todayIdx = weekDates.findIndex(d => fmt(d) === todayStr);
+  const [selectedDay, setSelectedDay] = useState(todayIdx >= 0 ? todayIdx : 0);
 
   // Smart Plan Modal State
   const [weekdayHours, setWeekdayHours] = useState(3);
@@ -108,36 +91,144 @@ export default function StudyPlanner() {
   const [excludeDays, setExcludeDays] = useState(false);
 
   // Month View State
-  const [monthData] = useState(generateMonthData());
+  const [monthData, setMonthData] = useState([]);
   const [selectedMonthDay, setSelectedMonthDay] = useState(null);
   const [showDayPanel, setShowDayPanel] = useState(false);
+  const [monthDayTasks, setMonthDayTasks] = useState([]);
+
+  // Add Task modal state
+  const [newSubject, setNewSubject] = useState('Physics');
+  const [newChapter, setNewChapter] = useState('');
+  const [newMode, setNewMode] = useState('Learn');
+  const [newTime, setNewTime] = useState(45);
+  const [newDate, setNewDate] = useState(fmt(new Date()));
+
+  // ── Fetch summary ───────────────────────────────────────────────────────────
+  const fetchSummary = useCallback(async () => {
+    try {
+      const { start, end } = getMonthRange();
+      const res = await getPlannerSummary(start, end);
+      setSummary(res.data);
+
+      // Build month grid from dailyAggregates
+      const { daysInMonth } = getMonthRange();
+      const aggregateMap = {};
+      (res.data.dailyAggregates || []).forEach(a => {
+        const dayNum = new Date(a.date).getDate();
+        aggregateMap[dayNum] = a;
+      });
+      const grid = Array.from({ length: daysInMonth }, (_, i) => {
+        const dayNum = i + 1;
+        const agg = aggregateMap[dayNum];
+        return {
+          day: dayNum,
+          hours: agg ? agg.plannedHours : 0,
+          completedHours: agg ? agg.completedHours : 0,
+          subjects: agg ? agg.subjects : [],
+          totalTasks: agg ? agg.totalTasks : 0,
+        };
+      });
+      setMonthData(grid);
+    } catch (err) {
+      console.error('Failed to fetch summary:', err);
+    }
+  }, []);
+
+  // ── Fetch tasks for selected day ────────────────────────────────────────────
+  const fetchTasks = useCallback(async (dateStr) => {
+    try {
+      const res = await getTasksByDate(dateStr);
+      setTasks((res.data.tasks || []).map(t => ({
+        ...t,
+        icon: SUBJECT_ICONS[t.subject] || '📚',
+        time: t.estimated_minutes,
+        completed: t.is_completed,
+      })));
+    } catch (err) {
+      console.error('Failed to fetch tasks:', err);
+      setTasks([]);
+    }
+  }, []);
+
+  // ── Fetch suggestions ───────────────────────────────────────────────────────
+  const fetchSuggestions = useCallback(async () => {
+    try {
+      const res = await getSuggestions();
+      setSuggestions(res.data.suggestions || []);
+    } catch { setSuggestions([]); }
+  }, []);
+
+  // ── Initial load ────────────────────────────────────────────────────────────
+  useEffect(() => { fetchSummary(); fetchSuggestions(); }, [fetchSummary, fetchSuggestions]);
+
+  // ── Refetch tasks when selected day changes ─────────────────────────────────
+  useEffect(() => {
+    const dateStr = fmt(weekDates[selectedDay]);
+    fetchTasks(dateStr);
+  }, [selectedDay]);
+
+  // ── Build weekDays from summary data ────────────────────────────────────────
+  const weekDays = weekDates.map((d) => {
+    const dateStr = fmt(d);
+    const agg = (summary?.dailyAggregates || []).find(a => fmt(new Date(a.date)) === dateStr);
+    return {
+      day: DAY_NAMES[d.getDay()],
+      date: d.getDate(),
+      dateStr,
+      hours: agg ? agg.plannedHours : 0,
+      completed: agg ? agg.completedHours : 0,
+      subjects: agg ? agg.subjects : [],
+      isToday: dateStr === todayStr,
+    };
+  });
 
   const handleNavigation = (path) => {
     const isImplemented = ['/dashboard', '/galaxy', '/duels', '/planner'].includes(path);
-    if (isImplemented) {
-      navigate(path);
-    }
+    if (isImplemented) navigate(path);
   };
 
-  const toggleTask = (taskId) => {
-    setTasks(tasks.map(task =>
-      task.id === taskId ? { ...task, completed: !task.completed } : task
-    ));
+  const toggleTask = async (taskId) => {
+    const task = tasks.find(t => t.id === taskId);
+    if (!task) return;
+    try {
+      await toggleTaskCompletion(taskId, !task.completed);
+      setTasks(tasks.map(t => t.id === taskId ? { ...t, completed: !t.completed, is_completed: !t.completed } : t));
+      fetchSummary(); // refresh metrics
+    } catch (err) { console.error('Toggle failed:', err); }
   };
 
-  const handleGeneratePlan = () => {
+  const handleGeneratePlan = async () => {
     setShowSmartPlanModal(false);
     setIsGeneratingPlan(true);
-
-    // Simulate AI planning
-    setTimeout(() => {
-      setIsGeneratingPlan(false);
-    }, 2500);
+    try {
+      await generateSmartPlan({ weekday_hours: weekdayHours, weekend_hours: weekendHours, focus_mode: focusMode, timeframe });
+      await fetchSummary();
+      await fetchTasks(fmt(weekDates[selectedDay]));
+    } catch (err) { console.error('Generate plan failed:', err); }
+    setIsGeneratingPlan(false);
   };
 
-  const handleMonthDayClick = (day) => {
+  const handleAddTask = async () => {
+    if (!newChapter.trim()) return;
+    try {
+      await createTask({ subject: newSubject, chapter: newChapter, mode: newMode, estimated_minutes: newTime, scheduled_date: newDate });
+      setShowAddModal(false);
+      setNewChapter('');
+      fetchSummary();
+      fetchTasks(fmt(weekDates[selectedDay]));
+    } catch (err) { console.error('Add task failed:', err); }
+  };
+
+  const handleMonthDayClick = async (day) => {
     setSelectedMonthDay(day);
     setShowDayPanel(true);
+    try {
+      const { start } = getMonthRange();
+      const d = new Date(start);
+      d.setDate(day);
+      const res = await getTasksByDate(fmt(d));
+      setMonthDayTasks(res.data.tasks || []);
+    } catch { setMonthDayTasks([]); }
   };
 
   const getHeatmapIntensity = (hours) => {
@@ -148,9 +239,9 @@ export default function StudyPlanner() {
     return 'rgba(124, 58, 237, 0.8)';
   };
 
-  const completedHours = weekDays.reduce((sum, day) => sum + day.completed, 0);
-  const plannedHours = weekDays.reduce((sum, day) => sum + day.hours, 0);
-  const weeklyCompletion = Math.round((completedHours / plannedHours) * 100);
+  const completedHours = summary?.completedHours ?? 0;
+  const plannedHours = summary?.plannedHours ?? 0;
+  const weeklyCompletion = summary?.weeklyCompletion ?? 0;
 
   const focusModes = [
     { id: 'balanced', label: 'Balanced', desc: 'Learn + Practice + Quiz' },
@@ -224,7 +315,7 @@ export default function StudyPlanner() {
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2 px-3 py-2 bg-white/5 border border-white/10 rounded-lg">
                 <Flame size={16} className="text-[#F97316]" />
-                <span className="text-[13px] font-semibold text-[#F3F4F6]">7 day streak</span>
+                <span className="text-[13px] font-semibold text-[#F3F4F6]">{summary?.streak ?? 0} day streak</span>
               </div>
             </div>
           </header>
@@ -266,7 +357,7 @@ export default function StudyPlanner() {
                   {/* Days Until Exam */}
                   <div className="p-4 bg-white/5 rounded-xl border border-white/10">
                     <p className="text-[11px] text-[#9CA3AF] mb-1">Days Until Exam</p>
-                    <p className="text-[24px] font-bold text-[#F3F4F6]">142</p>
+                    <p className="text-[24px] font-bold text-[#F3F4F6]">{summary?.daysUntilExam ?? '—'}</p>
                   </div>
 
                   {/* Weekly Completion */}
@@ -280,14 +371,14 @@ export default function StudyPlanner() {
                     <p className="text-[11px] text-[#9CA3AF] mb-1">Study Streak</p>
                     <div className="flex items-center gap-2">
                       <Flame size={20} className="text-[#F97316]" />
-                      <p className="text-[24px] font-bold text-[#F97316]">7</p>
+                      <p className="text-[24px] font-bold text-[#F97316]">{summary?.streak ?? 0}</p>
                     </div>
                   </div>
 
                   {/* Chapters This Week */}
                   <div className="p-4 bg-white/5 rounded-xl border border-white/10">
                     <p className="text-[11px] text-[#9CA3AF] mb-1">Chapters This Week</p>
-                    <p className="text-[24px] font-bold text-[#6366F1]">5</p>
+                    <p className="text-[24px] font-bold text-[#6366F1]">{summary?.chaptersThisWeek ?? 0}</p>
                   </div>
                 </div>
 
@@ -540,7 +631,7 @@ export default function StudyPlanner() {
                         transition={{ duration: 0.3 }}
                         className="p-6 bg-[rgba(12,8,36,0.7)] backdrop-blur-xl rounded-2xl border border-white/10"
                       >
-                        <h3 className="text-[15px] font-bold text-[#F3F4F6] mb-6">February 2026</h3>
+                        <h3 className="text-[15px] font-bold text-[#F3F4F6] mb-6">{getMonthRange().monthName} {getMonthRange().year}</h3>
 
                         {/* Calendar Grid */}
                         <div className="grid grid-cols-7 gap-2">
@@ -554,7 +645,7 @@ export default function StudyPlanner() {
                           {/* Calendar days */}
                           {monthData.map((dayData) => {
                             const heatmapColor = getHeatmapIntensity(dayData.hours);
-                            const hasTask = dayData.tasks.length > 0;
+                            const hasTask = dayData.totalTasks > 0;
 
                             return (
                               <motion.button
@@ -600,7 +691,7 @@ export default function StudyPlanner() {
                       >
                         <div className="flex items-center justify-between mb-5">
                           <h3 className="text-[15px] font-bold text-[#F3F4F6]">
-                            February {selectedMonthDay}
+                            {getMonthRange().monthName} {selectedMonthDay}
                           </h3>
                           <button
                             onClick={() => setShowDayPanel(false)}
@@ -615,12 +706,12 @@ export default function StudyPlanner() {
                           <div className="flex items-center justify-between mb-2">
                             <span className="text-[11px] text-[#9CA3AF]">Planned Hours</span>
                             <span className="text-[13px] font-semibold text-[#6366F1]">
-                              {monthData[selectedMonthDay - 1].hours}h
+                              {monthData[selectedMonthDay - 1]?.hours ?? 0}h
                             </span>
                           </div>
                           <div className="flex items-center justify-between">
                             <span className="text-[11px] text-[#9CA3AF]">Completed</span>
-                            <span className="text-[13px] font-semibold text-[#10B981]">0h</span>
+                            <span className="text-[13px] font-semibold text-[#10B981]">{monthData[selectedMonthDay - 1]?.completedHours ?? 0}h</span>
                           </div>
                         </div>
 
@@ -628,10 +719,10 @@ export default function StudyPlanner() {
                         <div className="mb-4">
                           <h4 className="text-[12px] font-semibold text-[#9CA3AF] mb-3">Tasks</h4>
                           <div className="space-y-2">
-                            {monthData[selectedMonthDay - 1].tasks.length > 0 ? (
-                              monthData[selectedMonthDay - 1].tasks.map((task, i) => (
+                            {monthDayTasks.length > 0 ? (
+                              monthDayTasks.map((task, i) => (
                                 <div
-                                  key={i}
+                                  key={task.id || i}
                                   className="p-3 bg-white/5 border border-white/10 rounded-lg"
                                 >
                                   <p className="text-[12px] font-medium text-[#F3F4F6] mb-1">{task.chapter}</p>
@@ -723,32 +814,16 @@ export default function StudyPlanner() {
                     </div>
 
                     <div className="space-y-2">
-                      <button className="w-full p-3 bg-white/5 border border-white/10 rounded-lg hover:border-white/20 transition-colors text-left group">
-                        <div className="flex items-center justify-between">
-                          <p className="text-[12px] text-[#D1D5DB] group-hover:text-[#F3F4F6]">
-                            Review vector decomposition
-                          </p>
-                          <ChevronRight size={14} className="text-[#9CA3AF] group-hover:text-[#F3F4F6]" />
-                        </div>
-                      </button>
-
-                      <button className="w-full p-3 bg-white/5 border border-white/10 rounded-lg hover:border-white/20 transition-colors text-left group">
-                        <div className="flex items-center justify-between">
-                          <p className="text-[12px] text-[#D1D5DB] group-hover:text-[#F3F4F6]">
-                            Attempt 3 medium quiz questions
-                          </p>
-                          <ChevronRight size={14} className="text-[#9CA3AF] group-hover:text-[#F3F4F6]" />
-                        </div>
-                      </button>
-
-                      <button className="w-full p-3 bg-white/5 border border-white/10 rounded-lg hover:border-white/20 transition-colors text-left group">
-                        <div className="flex items-center justify-between">
-                          <p className="text-[12px] text-[#D1D5DB] group-hover:text-[#F3F4F6]">
-                            Revisit incorrect duel question
-                          </p>
-                          <ChevronRight size={14} className="text-[#9CA3AF] group-hover:text-[#F3F4F6]" />
-                        </div>
-                      </button>
+                      {suggestions.map((s, i) => (
+                        <button key={i} className="w-full p-3 bg-white/5 border border-white/10 rounded-lg hover:border-white/20 transition-colors text-left group">
+                          <div className="flex items-center justify-between">
+                            <p className="text-[12px] text-[#D1D5DB] group-hover:text-[#F3F4F6]">
+                              {s.text}
+                            </p>
+                            <ChevronRight size={14} className="text-[#9CA3AF] group-hover:text-[#F3F4F6]" />
+                          </div>
+                        </button>
+                      ))}
                     </div>
                   </motion.div>
 
@@ -991,36 +1066,34 @@ export default function StudyPlanner() {
                 {/* Subject Dropdown */}
                 <div>
                   <label className="block text-[12px] text-[#9CA3AF] mb-2">Subject</label>
-                  <select className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-[13px] text-[#F3F4F6] focus:outline-none focus:border-[#6366F1]">
-                    <option>Physics</option>
-                    <option>Chemistry</option>
-                    <option>Math</option>
+                  <select value={newSubject} onChange={e => setNewSubject(e.target.value)} className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-[13px] text-[#F3F4F6] focus:outline-none focus:border-[#6366F1]">
+                    <option value="Physics">Physics</option>
+                    <option value="Chemistry">Chemistry</option>
+                    <option value="Math">Math</option>
                   </select>
                 </div>
 
                 {/* Chapter Dropdown */}
                 <div>
                   <label className="block text-[12px] text-[#9CA3AF] mb-2">Chapter</label>
-                  <select className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-[13px] text-[#F3F4F6] focus:outline-none focus:border-[#6366F1]">
-                    <option>Motion in 2D</option>
-                    <option>Circular Motion</option>
-                    <option>Work & Energy</option>
-                  </select>
+                  <input
+                    type="text"
+                    value={newChapter}
+                    onChange={e => setNewChapter(e.target.value)}
+                    placeholder="e.g. Motion in 2D"
+                    className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-[13px] text-[#F3F4F6] focus:outline-none focus:border-[#6366F1]"
+                  />
                 </div>
 
                 {/* Mode Selector */}
                 <div>
                   <label className="block text-[12px] text-[#9CA3AF] mb-2">Mode</label>
                   <div className="grid grid-cols-3 gap-2">
-                    <button className="px-3 py-2 bg-[#6366F1]/20 border border-[#6366F1] rounded-lg text-[12px] text-[#6366F1] font-medium">
-                      Learn
-                    </button>
-                    <button className="px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-[12px] text-[#9CA3AF] hover:border-white/20">
-                      Practice
-                    </button>
-                    <button className="px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-[12px] text-[#9CA3AF] hover:border-white/20">
-                      Quiz
-                    </button>
+                    {['Learn', 'Practice', 'Quiz'].map(m => (
+                      <button key={m} onClick={() => setNewMode(m)} className={`px-3 py-2 rounded-lg text-[12px] font-medium ${newMode === m ? 'bg-[#6366F1]/20 border border-[#6366F1] text-[#6366F1]' : 'bg-white/5 border border-white/10 text-[#9CA3AF] hover:border-white/20'}`}>
+                        {m}
+                      </button>
+                    ))}
                   </div>
                 </div>
 
@@ -1029,6 +1102,8 @@ export default function StudyPlanner() {
                   <label className="block text-[12px] text-[#9CA3AF] mb-2">Estimated Time (min)</label>
                   <input
                     type="number"
+                    value={newTime}
+                    onChange={e => setNewTime(parseInt(e.target.value) || 0)}
                     placeholder="45"
                     className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-[13px] text-[#F3F4F6] focus:outline-none focus:border-[#6366F1]"
                   />
@@ -1039,6 +1114,8 @@ export default function StudyPlanner() {
                   <label className="block text-[12px] text-[#9CA3AF] mb-2">Date</label>
                   <input
                     type="date"
+                    value={newDate}
+                    onChange={e => setNewDate(e.target.value)}
                     className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-[13px] text-[#F3F4F6] focus:outline-none focus:border-[#6366F1]"
                   />
                 </div>
@@ -1052,7 +1129,7 @@ export default function StudyPlanner() {
                     Cancel
                   </button>
                   <button
-                    onClick={() => setShowAddModal(false)}
+                    onClick={handleAddTask}
                     className="flex-1 px-4 py-3 bg-[#10B981] rounded-lg text-[13px] font-medium text-white hover:bg-[#059669] transition-colors"
                   >
                     Add Task

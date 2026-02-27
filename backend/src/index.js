@@ -10,6 +10,7 @@ const { Server: SocketIOServer } = require('socket.io');
 // Route handlers
 const authRoutes = require('./routes/auth');
 const duelsRoutes = require('./routes/duels');
+const plannerRoutes = require('./routes/planner');
 
 // ─── App & HTTP Server Setup ──────────────────────────────────────────────────
 const app = express();
@@ -42,6 +43,7 @@ app.get('/api/health', (req, res) => {
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/users', authRoutes);   // GET /api/v1/users/me is on the auth router
 app.use('/api/v1/duels', duelsRoutes);
+app.use('/api/v1/planner', plannerRoutes);
 
 // ─── WebSocket: Duel Real-time Room Management ────────────────────────────────
 //

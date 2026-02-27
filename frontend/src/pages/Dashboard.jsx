@@ -77,7 +77,7 @@ export default function Dashboard() {
             {navItems.map((item) => {
               const Icon = item.icon;
               const isActive = item.path === '/dashboard';
-              const isImplemented = ['/dashboard', '/galaxy', '/duels'].includes(item.path);
+              const isImplemented = ['/dashboard', '/galaxy', '/duels', '/planner'].includes(item.path);
 
               return (
                 <button
