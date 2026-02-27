@@ -81,8 +81,8 @@ export default function DuelMatch() {
 
     // Listen for opponent forfeit
     const cleanup = onOpponentForfeited((data) => {
-      if (data.duelId === duelId) {
-        hasForfeited.current = true; // prevent our own forfeit
+      if (data.duelId === duelId && !hasForfeited.current) {
+        hasForfeited.current = true; // prevent our own forfeit on unmount
         navigate('/duels/result', {
           state: {
             duelId,

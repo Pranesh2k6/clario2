@@ -15,6 +15,7 @@ import Practice from "./pages/Practice";
 import Duels from "./pages/Duels";
 import DuelMatch from "./pages/DuelMatch";
 import DuelResult from "./pages/DuelResult";
+import StudyPlanner from "./pages/StudyPlanner";
 import ProtectedRoute from "./components/ProtectedRoute";
 
 function Protected({ children }) {
@@ -85,5 +86,9 @@ export const router = createBrowserRouter([
   {
     path: "/duels/result",
     element: <Protected><DuelResult /></Protected>,
+  },
+  {
+    path: "/planner",
+    element: <Protected><StudyPlanner /></Protected>,
   },
 ]);
