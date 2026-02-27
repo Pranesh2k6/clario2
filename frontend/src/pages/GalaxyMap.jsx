@@ -1,3 +1,4 @@
+import { ProfileDropdown } from '../components/ProfileDropdown';
 import { useNavigate } from 'react-router';
 import { motion } from 'motion/react';
 import { ArrowLeft, Zap } from 'lucide-react';
@@ -136,7 +137,7 @@ export default function GalaxyMap() {
           </div>
 
           {/* Profile Avatar */}
-          <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#7C3AED] to-[#6366F1] border-2 border-white/20" />
+          <ProfileDropdown />
         </div>
       </div>
 

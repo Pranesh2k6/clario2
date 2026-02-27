@@ -16,6 +16,7 @@ export default function DuelMatch() {
   const [currentRound, setCurrentRound] = useState(1);
   const [timeLeft, setTimeLeft] = useState(30);
   const [selectedAnswer, setSelectedAnswer] = useState(null);
+  const [textAnswer, setTextAnswer] = useState('');
   const [submitted, setSubmitted] = useState(false);
   const [showRoundResult, setShowRoundResult] = useState(false);
   const [isCorrect, setIsCorrect] = useState(false);
@@ -125,6 +126,7 @@ export default function DuelMatch() {
           setCurrentRound(prev => prev + 1);
           setTimeLeft(30);
           setSelectedAnswer(null);
+          setTextAnswer('');
           setSubmitted(false);
           setShowRoundResult(false);
           setCorrectAnswerIndex(null);
@@ -346,79 +348,102 @@ export default function DuelMatch() {
                   </h2>
                 </div>
 
-                {/* Options */}
-                <div className="space-y-3 mb-8">
-                  {(currentQuestion.content?.options || ['A', 'B', 'C', 'D']).map((option, index) => (
-                    <motion.button
-                      key={index}
-                      onClick={() => !submitted && setSelectedAnswer(index)}
-                      disabled={submitted}
-                      whileHover={{ scale: submitted ? 1 : 1.01 }}
-                      whileTap={{ scale: submitted ? 1 : 0.99 }}
-                      className={`
-                        w-full p-4 rounded-xl text-left transition-all duration-200
-                        ${submitted
-                          ? index === correctAnswerIndex
-                            ? 'bg-[#10B981]/20 border-2 border-[#10B981]'
+                {/* Answer Area */}
+                {currentQuestion.content?.options && currentQuestion.content.options.length > 0 ? (
+                  /* MCQ Options */
+                  <div className="space-y-3 mb-8">
+                    {currentQuestion.content.options.map((option, index) => (
+                      <motion.button
+                        key={index}
+                        onClick={() => !submitted && setSelectedAnswer(index)}
+                        disabled={submitted}
+                        whileHover={{ scale: submitted ? 1 : 1.01 }}
+                        whileTap={{ scale: submitted ? 1 : 0.99 }}
+                        className={`
+                          w-full p-4 rounded-xl text-left transition-all duration-200
+                          ${submitted
+                            ? index === correctAnswerIndex
+                              ? 'bg-[#10B981]/20 border-2 border-[#10B981]'
+                              : selectedAnswer === index
+                                ? 'bg-[#EF4444]/20 border-2 border-[#EF4444]'
+                                : 'bg-white/5 border-2 border-white/10 opacity-50'
                             : selectedAnswer === index
-                              ? 'bg-[#EF4444]/20 border-2 border-[#EF4444]'
-                              : 'bg-white/5 border-2 border-white/10 opacity-50'
-                          : selectedAnswer === index
-                            ? 'bg-[#6366F1]/20 border-2 border-[#6366F1] shadow-[0_0_20px_rgba(99,102,241,0.3)]'
-                            : 'bg-white/5 border-2 border-white/10 hover:border-white/20 cursor-pointer'
+                              ? 'bg-[#6366F1]/20 border-2 border-[#6366F1] shadow-[0_0_20px_rgba(99,102,241,0.3)]'
+                              : 'bg-white/5 border-2 border-white/10 hover:border-white/20 cursor-pointer'
+                          }
+                          ${submitted && 'cursor-not-allowed'}
+                        `}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className={`
+                            w-8 h-8 rounded-lg flex items-center justify-center font-bold text-[14px]
+                            ${submitted
+                              ? index === correctAnswerIndex
+                                ? 'bg-[#10B981] text-white'
+                                : selectedAnswer === index
+                                  ? 'bg-[#EF4444] text-white'
+                                  : 'bg-white/10 text-[#9CA3AF]'
+                              : selectedAnswer === index
+                                ? 'bg-[#6366F1] text-white'
+                                : 'bg-white/10 text-[#9CA3AF]'
+                            }
+                          `}>
+                            {String.fromCharCode(65 + index)}
+                          </div>
+                          <span className={`
+                            text-[14px]
+                            ${submitted
+                              ? index === correctAnswerIndex
+                                ? 'text-[#10B981] font-semibold'
+                                : selectedAnswer === index
+                                  ? 'text-[#EF4444] font-semibold'
+                                  : 'text-[#9CA3AF]'
+                              : selectedAnswer === index
+                                ? 'text-[#F3F4F6] font-medium'
+                                : 'text-[#D1D5DB]'
+                            }
+                          `}>
+                            {option}
+                          </span>
+                        </div>
+                      </motion.button>
+                    ))}
+                  </div>
+                ) : (
+                  /* Text Input for non-MCQ questions */
+                  <div className="mb-8">
+                    <input
+                      type="text"
+                      value={textAnswer}
+                      onChange={(e) => !submitted && setTextAnswer(e.target.value)}
+                      disabled={submitted}
+                      placeholder="Type your answer here..."
+                      onKeyDown={(e) => e.key === 'Enter' && textAnswer.trim() && handleSubmit()}
+                      className={`
+                        w-full px-5 py-4 rounded-xl text-[16px] font-medium transition-all duration-200
+                        ${submitted
+                          ? isCorrect
+                            ? 'bg-[#10B981]/20 border-2 border-[#10B981] text-[#10B981]'
+                            : 'bg-[#EF4444]/20 border-2 border-[#EF4444] text-[#EF4444]'
+                          : 'bg-white/5 border-2 border-white/10 text-[#F3F4F6] placeholder:text-[#6B7280] focus:outline-none focus:border-[#6366F1]/50 focus:bg-white/8'
                         }
                         ${submitted && 'cursor-not-allowed'}
                       `}
-                    >
-                      <div className="flex items-center gap-3">
-                        {/* Option Letter */}
-                        <div className={`
-                          w-8 h-8 rounded-lg flex items-center justify-center font-bold text-[14px]
-                          ${submitted
-                            ? index === correctAnswerIndex
-                              ? 'bg-[#10B981] text-white'
-                              : selectedAnswer === index
-                                ? 'bg-[#EF4444] text-white'
-                                : 'bg-white/10 text-[#9CA3AF]'
-                            : selectedAnswer === index
-                              ? 'bg-[#6366F1] text-white'
-                              : 'bg-white/10 text-[#9CA3AF]'
-                          }
-                        `}>
-                          {String.fromCharCode(65 + index)}
-                        </div>
-                        {/* Option Text */}
-                        <span className={`
-                          text-[14px]
-                          ${submitted
-                            ? index === correctAnswerIndex
-                              ? 'text-[#10B981] font-semibold'
-                              : selectedAnswer === index
-                                ? 'text-[#EF4444] font-semibold'
-                                : 'text-[#9CA3AF]'
-                            : selectedAnswer === index
-                              ? 'text-[#F3F4F6] font-medium'
-                              : 'text-[#D1D5DB]'
-                          }
-                        `}>
-                          {option}
-                        </span>
-                      </div>
-                    </motion.button>
-                  ))}
-                </div>
+                    />
+                  </div>
+                )}
 
                 {/* Submit Button */}
                 {!submitted ? (
                   <motion.button
                     onClick={handleSubmit}
-                    disabled={selectedAnswer === null}
-                    whileHover={{ scale: selectedAnswer === null ? 1 : 1.02 }}
-                    whileTap={{ scale: selectedAnswer === null ? 1 : 0.98 }}
+                    disabled={selectedAnswer === null && !textAnswer.trim()}
+                    whileHover={{ scale: (selectedAnswer === null && !textAnswer.trim()) ? 1 : 1.02 }}
+                    whileTap={{ scale: (selectedAnswer === null && !textAnswer.trim()) ? 1 : 0.98 }}
                     className={`
                       w-full py-4 rounded-xl font-bold text-[16px]
                       transition-all duration-200
-                      ${selectedAnswer === null
+                      ${(selectedAnswer === null && !textAnswer.trim())
                         ? 'bg-white/5 border border-white/10 text-[#9CA3AF] cursor-not-allowed'
                         : 'bg-[#10B981] text-white shadow-[0_4px_20px_rgba(16,185,129,0.4)] hover:shadow-[0_6px_28px_rgba(16,185,129,0.5)]'
                       }

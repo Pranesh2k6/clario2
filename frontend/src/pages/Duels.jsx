@@ -6,6 +6,7 @@ import { LayoutDashboard, Map, FileText, Swords, Calendar, BarChart3, Settings, 
 import { useAuth } from '../context/AuthContext';
 import client from '../api/client';
 import { connectSocket, onMatchFound } from '../api/socket';
+import { ProfileDropdown } from '../components/ProfileDropdown';
 const clarioLogo = '';
 
 const navItems = [
@@ -22,6 +23,7 @@ export default function Duels() {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
   const [friendCode, setFriendCode] = useState('');
+  const [challengeUserId, setChallengeUserId] = useState('');
   const [activeMode, setActiveMode] = useState(null);
 
   // Data states
@@ -33,11 +35,16 @@ export default function Duels() {
   const [matchmakingStatus, setMatchmakingStatus] = useState(null);
   const pollingRef = useRef(null);
 
-  // Fetch data on mount
+  // Fetch data on mount + live polling for pending challenges
   useEffect(() => {
-    client.get('/duels/pending').then(r => setPendingChallenges(r.data.duels)).catch(() => { });
+    const fetchPending = () => client.get('/duels/pending').then(r => setPendingChallenges(r.data.duels)).catch(() => { });
+    fetchPending();
     client.get('/duels/recent-activity').then(r => setActivity(r.data)).catch(() => { });
     client.get('/duels/subjects/list').then(r => setSubjects(r.data.subjects)).catch(() => { });
+
+    // Poll pending challenges every 10 seconds
+    const interval = setInterval(fetchPending, 10000);
+    return () => clearInterval(interval);
   }, []);
 
   // ── Socket.io: Listen for match_found from the server ─────────────────────
@@ -105,6 +112,25 @@ export default function Duels() {
       navigate(`/duels/match`, { state: { duelId: res.data.duel.id } });
     } catch (err) {
       alert(err.response?.data?.error || 'Could not join duel. Check the code.');
+    }
+    setLoading(l => ({ ...l, friend: false }));
+  };
+
+  // ── Send Challenge by User ID ──────────────────────────────────────────────
+  const handleSendChallenge = async () => {
+    if (!challengeUserId.trim()) return;
+    setLoading(l => ({ ...l, friend: true }));
+    try {
+      await client.post('/duels/request', {
+        targetUserId: challengeUserId.trim(),
+        subjectIds: selectedSubjects,
+      });
+      alert('Challenge sent! They will see it in their Pending Challenges.');
+      setChallengeUserId('');
+      // Refresh pending list
+      client.get('/duels/pending').then(r => setPendingChallenges(r.data.duels)).catch(() => { });
+    } catch (err) {
+      alert(err.response?.data?.error || 'Could not send challenge.');
     }
     setLoading(l => ({ ...l, friend: false }));
   };
@@ -256,7 +282,7 @@ export default function Duels() {
               </div>
 
               {/* Profile Avatar */}
-              <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#7C3AED] to-[#6366F1] border-2 border-white/20" />
+              <ProfileDropdown />
             </div>
           </header>
 
@@ -421,11 +447,11 @@ export default function Duels() {
                       Duel a Friend
                     </h3>
                     <p className="text-[14px] text-[#9CA3AF] mb-6 leading-relaxed">
-                      Enter a code to challenge someone directly.
+                      Join by code or challenge by User ID.
                     </p>
 
-                    {/* Input and Button */}
-                    <div className="space-y-3">
+                    {/* Join by Code */}
+                    <div className="space-y-3 mb-4">
                       <input
                         type="text"
                         value={friendCode}
@@ -441,6 +467,33 @@ export default function Duels() {
                         className="w-full py-3 bg-[#6366F1] text-white rounded-xl font-semibold text-[14px] shadow-[0_4px_16px_rgba(99,102,241,0.3)] hover:shadow-[0_6px_24px_rgba(99,102,241,0.4)] transition-all disabled:opacity-60"
                       >
                         {loading.friend ? <Loader size={16} className="animate-spin mx-auto" /> : 'Join Duel'}
+                      </motion.button>
+                    </div>
+
+                    {/* OR divider */}
+                    <div className="flex items-center gap-3 my-4">
+                      <div className="flex-1 h-px bg-white/10" />
+                      <span className="text-[12px] font-semibold text-[#6B7280] uppercase">or</span>
+                      <div className="flex-1 h-px bg-white/10" />
+                    </div>
+
+                    {/* Send Challenge by User ID */}
+                    <div className="space-y-3">
+                      <input
+                        type="text"
+                        value={challengeUserId}
+                        onChange={(e) => setChallengeUserId(e.target.value)}
+                        placeholder="Paste opponent's User ID"
+                        className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-[14px] text-[#F3F4F6] placeholder:text-[#6B7280] focus:outline-none focus:border-[#EC4899]/50 focus:bg-white/8 transition-all font-mono text-center"
+                      />
+                      <motion.button
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
+                        onClick={handleSendChallenge}
+                        disabled={loading.friend || !challengeUserId.trim()}
+                        className="w-full py-3 bg-[#EC4899] text-white rounded-xl font-semibold text-[14px] shadow-[0_4px_16px_rgba(236,72,153,0.3)] hover:shadow-[0_6px_24px_rgba(236,72,153,0.4)] transition-all disabled:opacity-60"
+                      >
+                        {loading.friend ? <Loader size={16} className="animate-spin mx-auto" /> : 'Send Challenge'}
                       </motion.button>
                     </div>
                   </motion.div>
