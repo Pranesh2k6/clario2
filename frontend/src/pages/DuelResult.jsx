@@ -8,10 +8,10 @@ import { PerformanceStatsGraph } from '../components/PerformanceStatsGraph';
 
 // Mock round data with full questions
 const roundData = [
-  { 
-    round: 1, 
-    correct: true, 
-    difficulty: 'Easy', 
+  {
+    round: 1,
+    correct: true,
+    difficulty: 'Easy',
     timeTaken: 15,
     question: 'A projectile is thrown horizontally with velocity 20 m/s from a height of 45 m. What is the time taken to reach the ground?',
     options: ['2 s', '3 s', '4 s', '5 s'],
@@ -19,10 +19,10 @@ const roundData = [
     userAnswer: 1,
     explanation: 'Using the equation h = ½gt², we can solve for time: t = √(2h/g) = √(2×45/10) = 3 s. The horizontal velocity doesn\'t affect vertical motion.'
   },
-  { 
-    round: 2, 
-    correct: true, 
-    difficulty: 'Easy', 
+  {
+    round: 2,
+    correct: true,
+    difficulty: 'Easy',
     timeTaken: 12,
     question: 'At what angle should a projectile be launched to achieve maximum range?',
     options: ['30°', '45°', '60°', '90°'],
@@ -30,10 +30,10 @@ const roundData = [
     userAnswer: 1,
     explanation: 'Maximum range occurs at 45° launch angle for projectiles on level ground. At this angle, the horizontal and vertical components are optimized for distance. 30° and 60° give equal ranges but less than 45°.'
   },
-  { 
-    round: 3, 
-    correct: false, 
-    difficulty: 'Medium', 
+  {
+    round: 3,
+    correct: false,
+    difficulty: 'Medium',
     timeTaken: 22,
     question: 'A ball is projected at 45° with initial velocity 40 m/s. Calculate the maximum height. (g = 10 m/s²)',
     options: ['20 m', '40 m', '60 m', '80 m'],
@@ -41,10 +41,10 @@ const roundData = [
     userAnswer: 1,
     explanation: 'Maximum height H = (u²sin²θ)/(2g). At 45°, sin(45°) = 1/√2, so H = (40² × 0.5)/(2×10) = 800/40 = 20 m. Common error: forgetting to square the sine term or using total velocity instead of vertical component.'
   },
-  { 
-    round: 4, 
-    correct: true, 
-    difficulty: 'Easy', 
+  {
+    round: 4,
+    correct: true,
+    difficulty: 'Easy',
     timeTaken: 9,
     question: 'In projectile motion, which component of velocity remains constant?',
     options: ['Vertical', 'Horizontal', 'Both', 'Neither'],
@@ -52,10 +52,10 @@ const roundData = [
     userAnswer: 1,
     explanation: 'Horizontal velocity remains constant because there is no horizontal acceleration (ignoring air resistance). Gravity only affects vertical motion, causing vertical velocity to change continuously.'
   },
-  { 
-    round: 5, 
-    correct: false, 
-    difficulty: 'Hard', 
+  {
+    round: 5,
+    correct: false,
+    difficulty: 'Hard',
     timeTaken: 28,
     question: 'A projectile is launched at 60° with speed 50 m/s. What is the horizontal component of velocity?',
     options: ['25 m/s', '30 m/s', '43.3 m/s', '50 m/s'],
@@ -68,10 +68,13 @@ const roundData = [
 export default function DuelResult() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { playerScore = 850, opponentScore = 720 } = location.state || {};
+  const { playerScore = 0, opponentScore = 0, opponentForfeited = false, roundData: actualRoundData } = location.state || {};
 
-  const playerWon = playerScore > opponentScore;
-  const isDraw = playerScore === opponentScore;
+  // Use actual round data from the match, or fallback to empty
+  const rounds = actualRoundData && actualRoundData.length > 0 ? actualRoundData : roundData;
+
+  const playerWon = opponentForfeited || playerScore > opponentScore;
+  const isDraw = !opponentForfeited && playerScore === opponentScore;
 
   // Calculate accuracy by difficulty
   const easyCorrect = roundData.filter(r => r.difficulty === 'Easy' && r.correct).length;
@@ -100,9 +103,8 @@ export default function DuelResult() {
       {/* Celebratory Glow */}
       <div className="absolute inset-0 z-[5] pointer-events-none overflow-hidden">
         <motion.div
-          className={`absolute top-1/4 left-1/2 -translate-x-1/2 w-[800px] h-[800px] rounded-full blur-[150px] ${
-            playerWon ? 'bg-[#10B981]/20' : isDraw ? 'bg-[#FBBF24]/20' : 'bg-[#EF4444]/20'
-          }`}
+          className={`absolute top-1/4 left-1/2 -translate-x-1/2 w-[800px] h-[800px] rounded-full blur-[150px] ${playerWon ? 'bg-[#10B981]/20' : isDraw ? 'bg-[#FBBF24]/20' : 'bg-[#EF4444]/20'
+            }`}
           animate={{
             scale: [1, 1.2, 1],
             opacity: [0.3, 0.5, 0.3],
@@ -134,22 +136,22 @@ export default function DuelResult() {
             >
               <div className={`
                 w-20 h-20 rounded-full flex items-center justify-center
-                ${playerWon 
-                  ? 'bg-[#10B981]/20 border-4 border-[#10B981]/40' 
-                  : isDraw 
+                ${playerWon
+                  ? 'bg-[#10B981]/20 border-4 border-[#10B981]/40'
+                  : isDraw
                     ? 'bg-[#FBBF24]/20 border-4 border-[#FBBF24]/40'
                     : 'bg-[#EF4444]/20 border-4 border-[#EF4444]/40'
                 }
               `}>
-                <Trophy 
-                  size={40} 
+                <Trophy
+                  size={40}
                   className={
-                    playerWon 
-                      ? 'text-[#10B981]' 
-                      : isDraw 
+                    playerWon
+                      ? 'text-[#10B981]'
+                      : isDraw
                         ? 'text-[#FBBF24]'
                         : 'text-[#EF4444]'
-                  } 
+                  }
                 />
               </div>
             </motion.div>
@@ -163,9 +165,9 @@ export default function DuelResult() {
             >
               <h1 className={`
                 text-[36px] font-bold mb-2
-                ${playerWon 
-                  ? 'text-[#10B981]' 
-                  : isDraw 
+                ${playerWon
+                  ? 'text-[#10B981]'
+                  : isDraw
                     ? 'text-[#FBBF24]'
                     : 'text-[#EF4444]'
                 }
@@ -173,11 +175,13 @@ export default function DuelResult() {
                 {playerWon ? 'Victory!' : isDraw ? 'Draw!' : 'Defeat'}
               </h1>
               <p className="text-[14px] text-[#9CA3AF]">
-                {playerWon 
-                  ? 'You outperformed your opponent!' 
-                  : isDraw 
-                    ? 'Evenly matched battle!'
-                    : 'Better luck next time!'}
+                {opponentForfeited
+                  ? 'Opponent forfeited — you win!'
+                  : playerWon
+                    ? 'You outperformed your opponent!'
+                    : isDraw
+                      ? 'Evenly matched battle!'
+                      : 'Better luck next time!'}
               </p>
             </motion.div>
 
@@ -355,7 +359,7 @@ export default function DuelResult() {
                     <AlertCircle size={18} className="text-[#F59E0B]" />
                     <h3 className="text-[14px] font-semibold text-[#F3F4F6]">Focus Areas to Improve</h3>
                   </div>
-                  
+
                   <div className="space-y-3">
                     <div className="flex items-start gap-3">
                       <Target size={14} className="text-[#F59E0B] mt-0.5 flex-shrink-0" />
@@ -401,7 +405,7 @@ export default function DuelResult() {
                       />
                     ))}
                   </div>
-                  
+
                   {/* Instruction Text - NEW */}
                   <motion.p
                     initial={{ opacity: 0 }}

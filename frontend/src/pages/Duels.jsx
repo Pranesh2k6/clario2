@@ -140,7 +140,7 @@ export default function Duels() {
     try {
       const res = await client.post(`/duels/accept/${duelId}`);
       const duel = res.data.duel;
-      navigate(`/duels/match/${duel.id}`, { state: { duelId: duel.id, duelCode: duel.duel_code } });
+      navigate('/duels/match', { state: { duelId: duel.id, duelCode: duel.duel_code } });
     } catch (err) {
       alert(err.response?.data?.error || 'Could not accept challenge.');
     }

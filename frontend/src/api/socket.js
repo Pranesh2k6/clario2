@@ -61,3 +61,9 @@ export function onMatchFound(cb) {
     s.on("duel:match_found", cb);
     return () => s.off("duel:match_found", cb);
 }
+
+export function onOpponentForfeited(cb) {
+    const s = getSocket();
+    s.on("duel:opponent_forfeited", cb);
+    return () => s.off("duel:opponent_forfeited", cb);
+}

@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router';
 import { motion, AnimatePresence } from 'motion/react';
 import { SpaceBackground } from '../components/SpaceBackground';
-import { Clock, CheckCircle, Loader, Zap, TrendingUp, X } from 'lucide-react';
+import { Clock, CheckCircle, Loader, Zap, TrendingUp, X, LogOut } from 'lucide-react';
 import client from '../api/client';
+import { connectSocket, onOpponentForfeited } from '../api/socket';
 
 export default function DuelMatch() {
   const navigate = useNavigate();
@@ -57,6 +58,60 @@ export default function DuelMatch() {
         navigate('/duels');
       });
   }, [duelId]);
+
+  // ── Forfeit on exit / detect opponent forfeit ─────────────────────────────
+  const hasForfeited = useRef(false);
+
+  const forfeitDuel = useCallback(() => {
+    if (!duelId || hasForfeited.current) return;
+    hasForfeited.current = true;
+    // Use sendBeacon for reliability on page unload
+    const token = localStorage.getItem('firebase_token') || '';
+    navigator.sendBeacon?.(
+      `/api/v1/duels/${duelId}/forfeit`,
+      new Blob([JSON.stringify({})], { type: 'application/json' })
+    );
+    // Also try via axios as fallback
+    client.post(`/duels/${duelId}/forfeit`).catch(() => { });
+  }, [duelId]);
+
+  useEffect(() => {
+    if (!duelId) return;
+    const socket = connectSocket();
+
+    // Listen for opponent forfeit
+    const cleanup = onOpponentForfeited((data) => {
+      if (data.duelId === duelId) {
+        hasForfeited.current = true; // prevent our own forfeit
+        navigate('/duels/result', {
+          state: {
+            duelId,
+            playerScore,
+            opponentScore,
+            opponentForfeited: true,
+            roundData: roundResults,
+          },
+        });
+      }
+    });
+
+    // Forfeit on tab close / refresh
+    const handleBeforeUnload = () => forfeitDuel();
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      cleanup();
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [duelId, playerScore, opponentScore, roundResults, forfeitDuel]);
+
+  // Explicit exit button handler
+  const handleExit = () => {
+    if (window.confirm('Are you sure you want to exit? You will forfeit this duel.')) {
+      forfeitDuel();
+      navigate('/duels');
+    }
+  };
 
   // ── Timer countdown ───────────────────────────────────────────────────────
   useEffect(() => {
@@ -221,6 +276,13 @@ export default function DuelMatch() {
                 {duelData?.duelType === 'ai' ? 'AI Duel' : `Duel vs ${opponent.username}`}
               </h1>
               <div className="flex items-center gap-4">
+                <button
+                  onClick={handleExit}
+                  className="flex items-center gap-2 px-3 py-2 bg-[#EF4444]/20 border border-[#EF4444]/40 rounded-lg hover:bg-[#EF4444]/30 transition-colors text-[#EF4444] text-[12px] font-semibold"
+                >
+                  <LogOut size={14} />
+                  Exit
+                </button>
                 <div className="flex items-center gap-2 px-4 py-2 bg-white/5 border border-white/10 rounded-lg">
                   <span className="text-[13px] text-[#9CA3AF]">Round</span>
                   <span className="text-[13px] font-bold text-[#F3F4F6]">

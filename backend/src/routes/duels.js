@@ -34,6 +34,13 @@ async function selectQuestions(subjectIds) {
              ORDER BY RANDOM() LIMIT $2`,
             [subjectIds, QUESTIONS_PER_DUEL]
         );
+        // Fallback: if not enough questions found for the selected subjects, use all
+        if (q.rows.length < QUESTIONS_PER_DUEL) {
+            q = await query(
+                `SELECT id FROM questions WHERE is_active = true ORDER BY RANDOM() LIMIT $1`,
+                [QUESTIONS_PER_DUEL]
+            );
+        }
     } else {
         q = await query(
             `SELECT id FROM questions WHERE is_active = true ORDER BY RANDOM() LIMIT $1`,
@@ -423,6 +430,44 @@ router.get('/:id', firebaseAuth, async (req, res) => {
     }
 });
 
+// ── POST /:id/forfeit ────────────────────────────────────────────────────────
+// Forfeit / exit a duel. The opponent wins automatically.
+router.post('/:id/forfeit', firebaseAuth, async (req, res) => {
+    const playerId = req.user.dbId;
+    const { id: duelId } = req.params;
+
+    if (!isValidUUID(duelId)) return res.status(400).json({ error: 'Invalid duel ID format.' });
+
+    try {
+        const duelRes = await query(
+            `SELECT * FROM duels WHERE id = $1 AND status = 'active' AND (player_1_id = $2 OR player_2_id = $2)`,
+            [duelId, playerId]
+        );
+        if (duelRes.rows.length === 0)
+            return res.status(404).json({ error: 'Active duel not found.' });
+
+        const duel = duelRes.rows[0];
+        const winnerId = duel.player_1_id === playerId ? duel.player_2_id : duel.player_1_id;
+
+        await query(
+            `UPDATE duels SET status = 'completed', completed_at = NOW(), winner_id = $1 WHERE id = $2`,
+            [winnerId, duelId]
+        );
+
+        // Notify the opponent that they won
+        req.app.get('io')?.emit('duel:opponent_forfeited', {
+            duelId,
+            winnerId,
+            forfeitedBy: playerId,
+        });
+
+        return res.json({ message: 'You forfeited. Opponent wins.' });
+    } catch (err) {
+        console.error('[Duels /:id/forfeit] Error:', err.message);
+        return res.status(500).json({ error: 'Internal Server Error' });
+    }
+});
+
 // ── POST /:id/submit ─────────────────────────────────────────────────────────
 // Submit an answer for the current question.
 // Body: { questionId, selectedAnswerIndex, textAnswer? }
@@ -439,9 +484,9 @@ router.post('/:id/submit', firebaseAuth, async (req, res) => {
         return res.status(400).json({ error: 'selectedAnswerIndex is required' });
 
     try {
-        // Verify active duel and participation
+        // Verify duel participation (allow 'active' or 'completed' — second player may still be answering)
         const duelRes = await query(
-            `SELECT * FROM duels WHERE id = $1 AND status = 'active' AND (player_1_id = $2 OR player_2_id = $2)`,
+            `SELECT * FROM duels WHERE id = $1 AND status IN ('active', 'completed') AND (player_1_id = $2 OR player_2_id = $2)`,
             [duelId, playerId]
         );
         if (duelRes.rows.length === 0)
