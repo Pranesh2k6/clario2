@@ -15,7 +15,7 @@ export function ProfileDropdown() {
     // Fetch user ID on mount
     useEffect(() => {
         client.get('/users/me')
-            .then(r => setUserId(r.data.user?.id?.slice(0, 8) || '—'))
+            .then(r => setUserId(r.data.user?.id || '—'))
             .catch(() => { });
     }, []);
 
@@ -48,12 +48,12 @@ export function ProfileDropdown() {
             />
 
             {open && (
-                <div className="absolute right-0 top-12 w-56 bg-[rgba(12,8,36,0.95)] backdrop-blur-xl border border-white/12 rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] py-2 z-50">
+                <div className="absolute right-0 top-12 w-72 bg-[rgba(12,8,36,0.95)] backdrop-blur-xl border border-white/12 rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] py-2 z-50">
                     {/* User ID */}
                     <div className="px-4 py-2.5 border-b border-white/8">
                         <p className="text-[11px] font-medium text-[#9CA3AF] uppercase tracking-wider mb-1">Your User ID</p>
                         <div className="flex items-center justify-between gap-2">
-                            <span className="text-[13px] font-mono font-semibold text-[#F3F4F6]">
+                            <span className="text-[11px] font-mono font-semibold text-[#F3F4F6] break-all select-all">
                                 {userId || '...'}
                             </span>
                             <button
