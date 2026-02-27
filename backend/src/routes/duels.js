@@ -16,6 +16,12 @@ function generateDuelCode() {
     return Math.random().toString(36).substring(2, 8).toUpperCase();
 }
 
+// FIX: UUID format validation
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function isValidUUID(str) {
+    return typeof str === 'string' && UUID_REGEX.test(str);
+}
+
 async function selectQuestions(subjectIds) {
     let q;
     if (subjectIds && subjectIds.length > 0) {
@@ -37,16 +43,6 @@ async function selectQuestions(subjectIds) {
     return q.rows.map(r => r.id);
 }
 
-async function getUserByFirebaseUid(uid) {
-    const res = await query('SELECT id FROM users WHERE email = (SELECT email FROM users WHERE id::text = $1 OR email LIKE $1 || \'%\' LIMIT 1) LIMIT 1', [uid]);
-    // Fallback: try to find user whose id text matches the uid
-    if (res.rows.length === 0) {
-        const res2 = await query('SELECT id FROM users LIMIT 1');
-        return res2.rows[0]?.id;
-    }
-    return res.rows[0]?.id;
-}
-
 // ── POST /request ────────────────────────────────────────────────────────────
 // Send a duel request to another user by their user ID.
 // Body: { targetUserId, subjectIds? }
@@ -55,11 +51,24 @@ router.post('/request', firebaseAuth, async (req, res) => {
     const { targetUserId: player2Id, subjectIds } = req.body;
 
     if (!player2Id) return res.status(400).json({ error: 'targetUserId is required' });
+    // FIX: Validate UUID format
+    if (!isValidUUID(player2Id)) return res.status(400).json({ error: 'Invalid user ID format.' });
     if (player1Id === player2Id) return res.status(400).json({ error: 'Cannot duel yourself.' });
+
+    // FIX: Check target user exists
+    try {
+        const userCheck = await query('SELECT id FROM users WHERE id = $1', [player2Id]);
+        if (userCheck.rows.length === 0) return res.status(404).json({ error: 'Target user not found.' });
+    } catch (err) {
+        return res.status(400).json({ error: 'Invalid user ID.' });
+    }
 
     try {
         const questionIds = await selectQuestions(subjectIds);
-        if (questionIds.length === 0) return res.status(400).json({ error: 'No questions available for selected subjects.' });
+        // FIX: Validate minimum question count
+        if (questionIds.length < QUESTIONS_PER_DUEL) {
+            return res.status(400).json({ error: `Not enough questions available (found ${questionIds.length}, need ${QUESTIONS_PER_DUEL}).` });
+        }
 
         const duelCode = generateDuelCode();
         const result = await query(
@@ -133,9 +142,7 @@ router.post('/random-match', firebaseAuth, async (req, res) => {
         return res.status(401).json({ error: 'User not synced to database. Please log out and log in again.' });
     }
 
-    // ── FIX 1: Check if this player already has an active random duel ────────
-    // This prevents the race condition where Player A's poller re-queues them
-    // after Player B already created a duel for both of them.
+    // Check if this player already has an active random duel
     try {
         const existingDuel = await query(
             `SELECT * FROM duels
@@ -156,16 +163,12 @@ router.post('/random-match', firebaseAuth, async (req, res) => {
     const existingIdx = matchmakingQueue.findIndex(e => e.playerId === playerId);
     if (existingIdx !== -1) matchmakingQueue.splice(existingIdx, 1);
 
-    // ── FIX 3: Strict subject matching ───────────────────────────────────────
-    // Only match players whose selected subjects overlap, or if either party
-    // selected no subjects (wildcard = match with anyone).
+    // Strict subject matching
     const matchIdx = matchmakingQueue.findIndex(e => {
         if (e.playerId === playerId) return false;
         const mySubjects = subjectIds || [];
         const theirSubjects = e.subjectIds || [];
-        // If either player selected no subjects, it's a wildcard match
         if (mySubjects.length === 0 || theirSubjects.length === 0) return true;
-        // Otherwise, require at least one overlapping subject
         return mySubjects.some(s => theirSubjects.includes(s));
     });
 
@@ -176,7 +179,7 @@ router.post('/random-match', firebaseAuth, async (req, res) => {
         try {
             const mergedSubjects = [...new Set([...(subjectIds || []), ...(opponent.subjectIds || [])])];
             const questionIds = await selectQuestions(mergedSubjects.length > 0 ? mergedSubjects : null);
-            if (questionIds.length === 0) return res.status(400).json({ error: 'No questions available.' });
+            if (questionIds.length < QUESTIONS_PER_DUEL) return res.status(400).json({ error: 'Not enough questions available.' });
 
             const duelCode = generateDuelCode();
             const result = await query(
@@ -188,7 +191,6 @@ router.post('/random-match', firebaseAuth, async (req, res) => {
 
             const duel = result.rows[0];
 
-            // ── FIX 2: Notify BOTH players by their specific player IDs ──────
             const io = req.app.get('io');
             io?.emit('duel:match_found', {
                 duelId: duel.id,
@@ -218,7 +220,7 @@ router.post('/ai-match', firebaseAuth, async (req, res) => {
 
     try {
         const questionIds = await selectQuestions(subjectIds);
-        if (questionIds.length === 0) return res.status(400).json({ error: 'No questions available.' });
+        if (questionIds.length < QUESTIONS_PER_DUEL) return res.status(400).json({ error: 'Not enough questions available.' });
 
         const duelCode = generateDuelCode();
         const result = await query(
@@ -261,6 +263,10 @@ router.get('/pending', firebaseAuth, async (req, res) => {
 router.post('/accept/:duelId', firebaseAuth, async (req, res) => {
     const playerId = req.user.dbId;
     const { duelId } = req.params;
+
+    // FIX: Validate UUID format
+    if (!isValidUUID(duelId)) return res.status(400).json({ error: 'Invalid duel ID format.' });
+
     try {
         // Only the challenged player (player_2) can accept
         const result = await query(
@@ -294,6 +300,10 @@ router.post('/accept/:duelId', firebaseAuth, async (req, res) => {
 router.post('/decline/:duelId', firebaseAuth, async (req, res) => {
     const playerId = req.user.dbId;
     const { duelId } = req.params;
+
+    // FIX: Validate UUID format
+    if (!isValidUUID(duelId)) return res.status(400).json({ error: 'Invalid duel ID format.' });
+
     try {
         const result = await query(
             `DELETE FROM duels WHERE id = $1 AND player_2_id = $2 AND status = 'pending' RETURNING id`,
@@ -356,61 +366,14 @@ router.get('/subjects/list', async (req, res) => {
     }
 });
 
-// ── POST /:id/accept ─────────────────────────────────────────────────────────
-// Accept a pending duel.
-router.post('/:id/accept', firebaseAuth, async (req, res) => {
-    const playerId = req.user.dbId;
-    const { id: duelId } = req.params;
-
-    try {
-        const result = await query(
-            `UPDATE duels SET status = 'active', started_at = NOW()
-             WHERE id = $1 AND player_2_id = $2 AND status = 'pending'
-             RETURNING *`,
-            [duelId, playerId]
-        );
-
-        if (result.rows.length === 0)
-            return res.status(404).json({ error: 'Duel not found or not pending.' });
-
-        const duel = result.rows[0];
-        req.app.get('io')?.to(duelId).emit('duel:accepted', { duel });
-        return res.status(200).json({ duel });
-    } catch (err) {
-        console.error('[Duels /:id/accept] Error:', err.message);
-        return res.status(500).json({ error: 'Internal Server Error' });
-    }
-});
-
-// ── POST /:id/decline ────────────────────────────────────────────────────────
-// Decline a pending duel.
-router.post('/:id/decline', firebaseAuth, async (req, res) => {
-    const playerId = req.user.dbId;
-    const { id: duelId } = req.params;
-
-    try {
-        const result = await query(
-            `UPDATE duels SET status = 'cancelled'
-             WHERE id = $1 AND player_2_id = $2 AND status = 'pending'
-             RETURNING id, status`,
-            [duelId, playerId]
-        );
-
-        if (result.rows.length === 0)
-            return res.status(404).json({ error: 'Duel not found or not pending.' });
-
-        return res.status(200).json({ duel: result.rows[0] });
-    } catch (err) {
-        console.error('[Duels /:id/decline] Error:', err.message);
-        return res.status(500).json({ error: 'Internal Server Error' });
-    }
-});
-
 // ── GET /:id ─────────────────────────────────────────────────────────────────
 // Get active duel state with questions (no correct answers leak).
 router.get('/:id', firebaseAuth, async (req, res) => {
     const playerId = req.user.dbId;
     const { id: duelId } = req.params;
+
+    // FIX: Validate UUID format
+    if (!isValidUUID(duelId)) return res.status(400).json({ error: 'Invalid duel ID format.' });
 
     try {
         const duelRes = await query(
@@ -421,7 +384,7 @@ router.get('/:id', firebaseAuth, async (req, res) => {
 
         const duel = duelRes.rows[0];
 
-        // Fetch questions WITHOUT correct_answer_index
+        // Fetch questions WITHOUT correct_answer_index (prevents cheating)
         const qIds = duel.duel_questions || [];
         let questions = [];
         if (qIds.length > 0) {
@@ -430,7 +393,7 @@ router.get('/:id', firebaseAuth, async (req, res) => {
                 [qIds]
             );
             // Maintain the original order from duel_questions
-            questions = qIds.map(qid => qRes.rows.find(q => q.id === qid)).filter(Boolean);
+            questions = qIds.map(qid => qRes.rows.find(q => String(q.id) === String(qid))).filter(Boolean);
         }
 
         // Fetch opponent info
@@ -462,14 +425,18 @@ router.get('/:id', firebaseAuth, async (req, res) => {
 
 // ── POST /:id/submit ─────────────────────────────────────────────────────────
 // Submit an answer for the current question.
-// Body: { questionId, selectedAnswerIndex }
+// Body: { questionId, selectedAnswerIndex, textAnswer? }
 router.post('/:id/submit', firebaseAuth, async (req, res) => {
     const playerId = req.user.dbId;
     const { id: duelId } = req.params;
-    const { questionId, selectedAnswerIndex } = req.body;
+    const { questionId, selectedAnswerIndex, textAnswer } = req.body;
 
-    if (questionId === undefined || selectedAnswerIndex === undefined)
-        return res.status(400).json({ error: 'questionId and selectedAnswerIndex are required' });
+    // FIX: Validate UUID formats
+    if (!isValidUUID(duelId)) return res.status(400).json({ error: 'Invalid duel ID format.' });
+    if (!questionId) return res.status(400).json({ error: 'questionId is required' });
+    if (!isValidUUID(String(questionId))) return res.status(400).json({ error: 'Invalid question ID format.' });
+    if (selectedAnswerIndex === undefined)
+        return res.status(400).json({ error: 'selectedAnswerIndex is required' });
 
     try {
         // Verify active duel and participation
@@ -482,23 +449,67 @@ router.post('/:id/submit', firebaseAuth, async (req, res) => {
 
         const duel = duelRes.rows[0];
 
+        // FIX: Validate that the question belongs to this duel
+        const duelQuestionIds = (duel.duel_questions || []).map(String);
+        if (!duelQuestionIds.includes(String(questionId))) {
+            return res.status(400).json({ error: 'Question does not belong to this duel.' });
+        }
+
+        // FIX: Prevent double submission for the same question
+        const existingAnswer = await query(
+            `SELECT id FROM duel_events
+             WHERE duel_id = $1 AND player_id = $2 AND event_type = 'question_answered'
+             AND payload->>'questionId' = $3`,
+            [duelId, playerId, String(questionId)]
+        );
+        if (existingAnswer.rows.length > 0) {
+            return res.status(409).json({ error: 'You already answered this question.' });
+        }
+
+        // FIX: Validate question order — must answer in sequence
+        const answeredCount = await query(
+            `SELECT COUNT(*) AS cnt FROM duel_events
+             WHERE duel_id = $1 AND player_id = $2 AND event_type = 'question_answered'`,
+            [duelId, playerId]
+        );
+        const expectedIdx = parseInt(answeredCount.rows[0].cnt);
+        const submittedIdx = duelQuestionIds.indexOf(String(questionId));
+        if (submittedIdx !== expectedIdx) {
+            return res.status(400).json({ error: `Expected question index ${expectedIdx}, got ${submittedIdx}.` });
+        }
+
         // Check correct answer
-        const qRes = await query('SELECT correct_answer_index FROM questions WHERE id = $1', [questionId]);
+        const qRes = await query('SELECT correct_answer_index, content FROM questions WHERE id = $1', [questionId]);
         if (qRes.rows.length === 0) return res.status(404).json({ error: 'Question not found.' });
 
-        const isCorrect = qRes.rows[0].correct_answer_index === selectedAnswerIndex;
+        const question = qRes.rows[0];
+        let isCorrect = false;
+
+        // FIX: Handle fill-in-the-blank (text answer) vs MCQ
+        const hasOptions = question.content?.options && question.content.options.length > 0;
+        if (hasOptions) {
+            // MCQ: compare selectedAnswerIndex
+            isCorrect = question.correct_answer_index === selectedAnswerIndex;
+        } else if (textAnswer && typeof textAnswer === 'string') {
+            // Fill-in-the-blank: normalize and compare
+            const correctText = (question.content?.correct_answer || '').trim().toLowerCase();
+            const userText = textAnswer.trim().toLowerCase();
+            isCorrect = correctText === userText;
+        }
+        // If no options and no text answer, isCorrect stays false (unanswered/skipped)
+
         const points = isCorrect ? 100 : 0;
 
-        // Update score
+        // Update score (atomic — safe for concurrent updates)
         const isP1 = duel.player_1_id === playerId;
         const scoreCol = isP1 ? 'player_1_score' : 'player_2_score';
         await query(`UPDATE duels SET ${scoreCol} = ${scoreCol} + $1 WHERE id = $2`, [points, duelId]);
 
-        // Log event
+        // Log event (parameterized — safe from SQL injection via textAnswer)
         await query(
             `INSERT INTO duel_events (id, duel_id, player_id, event_type, payload)
              VALUES (gen_random_uuid(), $1, $2, 'question_answered', $3)`,
-            [duelId, playerId, JSON.stringify({ questionId, selectedAnswerIndex, isCorrect, points })]
+            [duelId, playerId, JSON.stringify({ questionId, selectedAnswerIndex, textAnswer: textAnswer || null, isCorrect, points })]
         );
 
         // Broadcast
@@ -524,29 +535,32 @@ router.post('/:id/submit', firebaseAuth, async (req, res) => {
         }
 
         // Check if this was the last question
-        const questionIds = (duel.duel_questions || []).map(String);
-        const currentIdx = questionIds.indexOf(String(questionId));
-        const isLastQuestion = currentIdx >= questionIds.length - 1;
+        const currentIdx = duelQuestionIds.indexOf(String(questionId));
+        const isLastQuestion = currentIdx >= duelQuestionIds.length - 1;
 
         if (isLastQuestion) {
-            // Complete the duel
-            const finalDuel = await query('SELECT * FROM duels WHERE id = $1', [duelId]);
+            // FIX: Use SELECT ... FOR UPDATE to prevent winner race condition
+            const finalDuel = await query('SELECT * FROM duels WHERE id = $1 FOR UPDATE', [duelId]);
             const d = finalDuel.rows[0];
-            const winnerId = d.player_1_score > d.player_2_score ? d.player_1_id
-                : d.player_2_score > d.player_1_score ? d.player_2_id
-                    : null;
 
-            await query(
-                `UPDATE duels SET status = 'completed', completed_at = NOW(), winner_id = $1 WHERE id = $2`,
-                [winnerId, duelId]
-            );
+            // Only complete if still active (other player's request might have completed first)
+            if (d.status === 'active') {
+                const winnerId = d.player_1_score > d.player_2_score ? d.player_1_id
+                    : d.player_2_score > d.player_1_score ? d.player_2_id
+                        : null;
 
-            req.app.get('io')?.to(duelId).emit('duel:completed', {
-                duelId,
-                winnerId,
-                player1Score: d.player_1_score + (isP1 ? points : 0),
-                player2Score: d.player_2_score + (!isP1 ? points : 0),
-            });
+                await query(
+                    `UPDATE duels SET status = 'completed', completed_at = NOW(), winner_id = $1 WHERE id = $2`,
+                    [winnerId, duelId]
+                );
+
+                req.app.get('io')?.to(duelId).emit('duel:completed', {
+                    duelId,
+                    winnerId,
+                    player1Score: d.player_1_score,
+                    player2Score: d.player_2_score,
+                });
+            }
         }
 
         // Fetch updated scores from DB
@@ -558,7 +572,7 @@ router.post('/:id/submit', firebaseAuth, async (req, res) => {
         return res.status(200).json({
             isCorrect,
             points,
-            correctAnswerIndex: qRes.rows[0].correct_answer_index,
+            correctAnswerIndex: question.correct_answer_index,
             isLastQuestion,
             playerScore: myScore,
             opponentScore: theirScore,
