@@ -418,7 +418,7 @@ export default function Duels() {
                   >
                     {/* Calmer Glow */}
                     <motion.div
-                      className="absolute top-0 right-0 w-[200px] h-[200px] bg-gradient-to-bl from-[#6366F1]/20 to-transparent rounded-full blur-[60px]"
+                      className="absolute top-0 right-0 w-[200px] h-[200px] bg-gradient-to-bl from-[#6366F1]/20 to-transparent rounded-full blur-[60px] pointer-events-none"
                       animate={{
                         opacity: activeMode === 'friend' ? 1 : 0.3,
                         scale: activeMode === 'friend' ? 1.2 : 1,
@@ -428,7 +428,7 @@ export default function Duels() {
 
                     {/* Border Glow */}
                     <motion.div
-                      className="absolute inset-0 rounded-2xl border-2 border-[#6366F1]/40 opacity-0 group-hover:opacity-100"
+                      className="absolute inset-0 rounded-2xl border-2 border-[#6366F1]/40 opacity-0 group-hover:opacity-100 pointer-events-none"
                       animate={{
                         boxShadow: activeMode === 'friend'
                           ? '0 0 30px rgba(99, 102, 241, 0.4)'
@@ -438,63 +438,65 @@ export default function Duels() {
                     />
 
                     {/* Icon */}
-                    <div className="flex items-center justify-center w-16 h-16 mb-6 rounded-2xl bg-[#6366F1]/20 border border-[#6366F1]/30">
-                      <UserPlus size={32} className="text-[#6366F1]" />
-                    </div>
+                    <div className="relative z-10">
+                      <div className="flex items-center justify-center w-16 h-16 mb-6 rounded-2xl bg-[#6366F1]/20 border border-[#6366F1]/30">
+                        <UserPlus size={32} className="text-[#6366F1]" />
+                      </div>
 
-                    {/* Content */}
-                    <h3 className="text-[24px] font-bold text-[#F3F4F6] mb-3">
-                      Duel a Friend
-                    </h3>
-                    <p className="text-[14px] text-[#9CA3AF] mb-6 leading-relaxed">
-                      Join by code or challenge by User ID.
-                    </p>
+                      {/* Content */}
+                      <h3 className="text-[24px] font-bold text-[#F3F4F6] mb-3">
+                        Duel a Friend
+                      </h3>
+                      <p className="text-[14px] text-[#9CA3AF] mb-6 leading-relaxed">
+                        Join by code or challenge by User ID.
+                      </p>
 
-                    {/* Join by Code */}
-                    <div className="space-y-3 mb-4">
-                      <input
-                        type="text"
-                        value={friendCode}
-                        onChange={(e) => setFriendCode(e.target.value.toUpperCase())}
-                        placeholder="Enter duel code"
-                        className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-[14px] text-[#F3F4F6] placeholder:text-[#6B7280] focus:outline-none focus:border-[#6366F1]/50 focus:bg-white/8 transition-all uppercase tracking-widest text-center"
-                      />
-                      <motion.button
-                        whileHover={{ scale: 1.05 }}
-                        whileTap={{ scale: 0.95 }}
-                        onClick={handleJoinDuel}
-                        disabled={loading.friend || !friendCode.trim()}
-                        className="w-full py-3 bg-[#6366F1] text-white rounded-xl font-semibold text-[14px] shadow-[0_4px_16px_rgba(99,102,241,0.3)] hover:shadow-[0_6px_24px_rgba(99,102,241,0.4)] transition-all disabled:opacity-60"
-                      >
-                        {loading.friend ? <Loader size={16} className="animate-spin mx-auto" /> : 'Join Duel'}
-                      </motion.button>
-                    </div>
+                      {/* Join by Code */}
+                      <div className="space-y-3 mb-4">
+                        <input
+                          type="text"
+                          value={friendCode}
+                          onChange={(e) => setFriendCode(e.target.value.toUpperCase())}
+                          placeholder="Enter duel code"
+                          className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-[14px] text-[#F3F4F6] placeholder:text-[#6B7280] focus:outline-none focus:border-[#6366F1]/50 focus:bg-white/8 transition-all uppercase tracking-widest text-center"
+                        />
+                        <motion.button
+                          whileHover={{ scale: 1.05 }}
+                          whileTap={{ scale: 0.95 }}
+                          onClick={handleJoinDuel}
+                          disabled={loading.friend || !friendCode.trim()}
+                          className="w-full py-3 bg-[#6366F1] text-white rounded-xl font-semibold text-[14px] shadow-[0_4px_16px_rgba(99,102,241,0.3)] hover:shadow-[0_6px_24px_rgba(99,102,241,0.4)] transition-all disabled:opacity-60"
+                        >
+                          {loading.friend ? <Loader size={16} className="animate-spin mx-auto" /> : 'Join Duel'}
+                        </motion.button>
+                      </div>
 
-                    {/* OR divider */}
-                    <div className="flex items-center gap-3 my-4">
-                      <div className="flex-1 h-px bg-white/10" />
-                      <span className="text-[12px] font-semibold text-[#6B7280] uppercase">or</span>
-                      <div className="flex-1 h-px bg-white/10" />
-                    </div>
+                      {/* OR divider */}
+                      <div className="flex items-center gap-3 my-4">
+                        <div className="flex-1 h-px bg-white/10" />
+                        <span className="text-[12px] font-semibold text-[#6B7280] uppercase">or</span>
+                        <div className="flex-1 h-px bg-white/10" />
+                      </div>
 
-                    {/* Send Challenge by User ID */}
-                    <div className="space-y-3">
-                      <input
-                        type="text"
-                        value={challengeUserId}
-                        onChange={(e) => setChallengeUserId(e.target.value)}
-                        placeholder="Paste opponent's User ID"
-                        className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-[14px] text-[#F3F4F6] placeholder:text-[#6B7280] focus:outline-none focus:border-[#EC4899]/50 focus:bg-white/8 transition-all font-mono text-center"
-                      />
-                      <motion.button
-                        whileHover={{ scale: 1.05 }}
-                        whileTap={{ scale: 0.95 }}
-                        onClick={handleSendChallenge}
-                        disabled={loading.friend || !challengeUserId.trim()}
-                        className="w-full py-3 bg-[#EC4899] text-white rounded-xl font-semibold text-[14px] shadow-[0_4px_16px_rgba(236,72,153,0.3)] hover:shadow-[0_6px_24px_rgba(236,72,153,0.4)] transition-all disabled:opacity-60"
-                      >
-                        {loading.friend ? <Loader size={16} className="animate-spin mx-auto" /> : 'Send Challenge'}
-                      </motion.button>
+                      {/* Send Challenge by User ID */}
+                      <div className="space-y-3">
+                        <input
+                          type="text"
+                          value={challengeUserId}
+                          onChange={(e) => setChallengeUserId(e.target.value)}
+                          placeholder="Paste opponent's User ID"
+                          className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-[14px] text-[#F3F4F6] placeholder:text-[#6B7280] focus:outline-none focus:border-[#EC4899]/50 focus:bg-white/8 transition-all font-mono text-center"
+                        />
+                        <motion.button
+                          whileHover={{ scale: 1.05 }}
+                          whileTap={{ scale: 0.95 }}
+                          onClick={handleSendChallenge}
+                          disabled={loading.friend || !challengeUserId.trim()}
+                          className="w-full py-3 bg-[#EC4899] text-white rounded-xl font-semibold text-[14px] shadow-[0_4px_16px_rgba(236,72,153,0.3)] hover:shadow-[0_6px_24px_rgba(236,72,153,0.4)] transition-all disabled:opacity-60"
+                        >
+                          {loading.friend ? <Loader size={16} className="animate-spin mx-auto" /> : 'Send Challenge'}
+                        </motion.button>
+                      </div>
                     </div>
                   </motion.div>
 
