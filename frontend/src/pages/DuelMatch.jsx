@@ -70,39 +70,29 @@ export default function DuelMatch() {
     }
   }, [timeLeft, submitted, loadingDuel, currentQuestion]);
 
-  // ── Simulate opponent answering ───────────────────────────────────────────
-  useEffect(() => {
-    if (loadingDuel || !currentQuestion || submitted) return;
-
-    const opponentTimer = setTimeout(() => {
-      setOpponentState('submitted');
-    }, Math.random() * 5000 + 3000);
-    return () => clearTimeout(opponentTimer);
-  }, [currentRound, submitted, loadingDuel, currentQuestion]);
-
   // ── Submit answer ─────────────────────────────────────────────────────────
   const handleSubmit = async () => {
-    if (selectedAnswer === null && timeLeft > 0) return;
+    if (selectedAnswer === null && !textAnswer.trim() && timeLeft > 0) return;
     if (!currentQuestion) return;
 
     setSubmitted(true);
     setPlayerState('submitted');
-    setOpponentState('submitted');
 
     try {
       const res = await client.post(`/duels/${duelId}/submit`, {
         questionId: currentQuestion.id,
         selectedAnswerIndex: selectedAnswer ?? -1,
+        textAnswer: textAnswer.trim() || null,
       });
 
       const { isCorrect: correct, points, correctAnswerIndex: correctIdx, isLastQuestion } = res.data;
       setIsCorrect(correct);
       setCorrectAnswerIndex(correctIdx);
-      if (correct) setPlayerScore(prev => prev + points);
 
-      // Simulate opponent score for AI duels
-      const opponentCorrect = Math.random() > 0.35;
-      if (opponentCorrect) setOpponentScore(prev => prev + 100);
+      // Use real scores from server
+      setPlayerScore(res.data.playerScore);
+      setOpponentScore(res.data.opponentScore);
+      setOpponentState('submitted');
 
       // Store round result for DuelResult
       setRoundResults(prev => [...prev, {
@@ -110,7 +100,7 @@ export default function DuelMatch() {
         correct,
         timeTaken: 30 - timeLeft,
         question: currentQuestion.content?.text || `Question ${currentRound}`,
-        options: currentQuestion.content?.options || ['A', 'B', 'C', 'D'],
+        options: currentQuestion.content?.options || [],
         correctAnswer: correctIdx,
         userAnswer: selectedAnswer,
         imageUrl: currentQuestion.content?.image_url,
@@ -122,7 +112,7 @@ export default function DuelMatch() {
       // Auto-advance
       const advanceDelay = correct ? 2500 : 4500;
       setTimeout(() => {
-        if (currentRound < totalRounds && !isLastQuestion) {
+        if (!isLastQuestion) {
           setCurrentRound(prev => prev + 1);
           setTimeLeft(30);
           setSelectedAnswer(null);
@@ -136,14 +126,14 @@ export default function DuelMatch() {
           navigate('/duels/result', {
             state: {
               duelId,
-              playerScore: playerScore + (correct ? points : 0),
-              opponentScore: opponentScore + (opponentCorrect ? 100 : 0),
+              playerScore: res.data.playerScore,
+              opponentScore: res.data.opponentScore,
               roundData: [...roundResults, {
                 round: currentRound,
                 correct,
                 timeTaken: 30 - timeLeft,
                 question: currentQuestion.content?.text || `Question ${currentRound}`,
-                options: currentQuestion.content?.options || ['A', 'B', 'C', 'D'],
+                options: currentQuestion.content?.options || [],
                 correctAnswer: correctIdx,
                 userAnswer: selectedAnswer,
                 imageUrl: currentQuestion.content?.image_url,

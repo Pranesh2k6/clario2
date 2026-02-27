@@ -94,7 +94,7 @@ export default function CaseDetail() {
         {/* Main Content */}
         <main className="flex-1 flex flex-col">
           {/* Top Bar */}
-          <header className="flex items-center justify-between px-6 lg:px-8 py-5 border-b border-white/8 bg-[rgba(12,8,36,0.5)] backdrop-blur-sm">
+          <header className="relative z-50 flex items-center justify-between px-6 lg:px-8 py-5 border-b border-white/8 bg-[rgba(12,8,36,0.5)] backdrop-blur-sm">
             {/* Left - Back Navigation */}
             <motion.button
               onClick={() => navigate(`/planet/${subjectId}/chapter/${chapterId}/practice`)}

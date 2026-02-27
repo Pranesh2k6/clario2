@@ -168,25 +168,6 @@ export default function Duels() {
     setLoading(l => ({ ...l, ai: false }));
   };
 
-  // ── Accept / Decline ──────────────────────────────────────────────────────
-  const handleAccept = async (duelId) => {
-    try {
-      await client.post(`/duels/${duelId}/accept`);
-      navigate(`/duels/match`, { state: { duelId } });
-    } catch (err) {
-      console.error('Accept error:', err);
-    }
-  };
-
-  const handleDecline = async (duelId) => {
-    try {
-      await client.post(`/duels/${duelId}/decline`);
-      setPendingChallenges(prev => prev.filter(d => d.id !== duelId));
-    } catch (err) {
-      console.error('Decline error:', err);
-    }
-  };
-
   return (
     <div className="relative min-h-screen w-full overflow-hidden">
       {/* Space Background */}
@@ -276,7 +257,7 @@ export default function Duels() {
         {/* Main Content */}
         <main className="flex-1 flex flex-col">
           {/* Top Bar */}
-          <header className="flex items-center justify-between px-6 lg:px-8 py-5 border-b border-white/8 bg-[rgba(12,8,36,0.5)] backdrop-blur-sm">
+          <header className="relative z-50 flex items-center justify-between px-6 lg:px-8 py-5 border-b border-white/8 bg-[rgba(12,8,36,0.5)] backdrop-blur-sm">
             {/* Left - Title */}
             <div className="flex items-center gap-3">
               <div className="p-2 bg-[#EC4899]/20 rounded-lg">

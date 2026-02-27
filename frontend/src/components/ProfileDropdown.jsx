@@ -1,4 +1,5 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { LogOut, Copy, Check } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router';
@@ -10,7 +11,9 @@ export function ProfileDropdown() {
     const [open, setOpen] = useState(false);
     const [userId, setUserId] = useState(null);
     const [copied, setCopied] = useState(false);
-    const ref = useRef(null);
+    const [pos, setPos] = useState({ top: 0, right: 0 });
+    const btnRef = useRef(null);
+    const menuRef = useRef(null);
 
     // Fetch user ID on mount
     useEffect(() => {
@@ -19,14 +22,47 @@ export function ProfileDropdown() {
             .catch(() => { });
     }, []);
 
+    // Position the dropdown relative to the button
+    const updatePos = useCallback(() => {
+        if (!btnRef.current) return;
+        const rect = btnRef.current.getBoundingClientRect();
+        setPos({
+            top: rect.bottom + 8,
+            right: window.innerWidth - rect.right,
+        });
+    }, []);
+
+    // Toggle open and recalculate position
+    const toggle = () => {
+        if (!open) updatePos();
+        setOpen(prev => !prev);
+    };
+
     // Close on click outside
     useEffect(() => {
+        if (!open) return;
         const handler = (e) => {
-            if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+            if (
+                btnRef.current && !btnRef.current.contains(e.target) &&
+                menuRef.current && !menuRef.current.contains(e.target)
+            ) {
+                setOpen(false);
+            }
         };
         document.addEventListener('mousedown', handler);
         return () => document.removeEventListener('mousedown', handler);
-    }, []);
+    }, [open]);
+
+    // Reposition on scroll/resize while open
+    useEffect(() => {
+        if (!open) return;
+        window.addEventListener('scroll', updatePos, true);
+        window.addEventListener('resize', updatePos);
+        return () => {
+            window.removeEventListener('scroll', updatePos, true);
+            window.removeEventListener('resize', updatePos);
+        };
+    }, [open, updatePos]);
 
     const handleSignOut = async () => {
         await logout();
@@ -40,45 +76,54 @@ export function ProfileDropdown() {
         setTimeout(() => setCopied(false), 1500);
     };
 
-    return (
-        <div className="relative" ref={ref}>
+    const dropdown = open ? createPortal(
+        <div
+            ref={menuRef}
+            style={{ position: 'fixed', top: pos.top, right: pos.right, zIndex: 9999 }}
+            className="min-w-[300px] bg-[rgba(12,8,36,0.97)] backdrop-blur-xl border border-white/15 rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.6)] py-3"
+        >
+            {/* User ID */}
+            <div className="px-4 pb-3 border-b border-white/10">
+                <p className="text-[10px] font-semibold text-[#9CA3AF] uppercase tracking-[0.15em] mb-2">Your User ID</p>
+                <div
+                    onClick={handleCopy}
+                    className="flex items-center gap-2 px-3 py-2.5 bg-white/5 border border-white/10 rounded-lg cursor-pointer hover:bg-white/8 hover:border-white/20 transition-all group"
+                >
+                    <span className="text-[12px] font-mono text-[#E5E7EB] leading-relaxed break-all select-all flex-1">
+                        {userId || '...'}
+                    </span>
+                    <div className="flex-shrink-0 p-1">
+                        {copied
+                            ? <Check size={14} className="text-[#10B981]" />
+                            : <Copy size={14} className="text-[#6B7280] group-hover:text-[#D1D5DB] transition-colors" />
+                        }
+                    </div>
+                </div>
+                {copied && (
+                    <p className="text-[10px] text-[#10B981] mt-1.5 text-center font-medium">Copied!</p>
+                )}
+            </div>
+
+            {/* Sign Out */}
             <button
-                onClick={() => setOpen(prev => !prev)}
+                onClick={handleSignOut}
+                className="w-full flex items-center gap-3 px-4 py-2.5 mt-1 text-[13px] font-medium text-[#F87171] hover:bg-white/8 transition-colors"
+            >
+                <LogOut size={16} />
+                <span>Sign Out</span>
+            </button>
+        </div>,
+        document.body
+    ) : null;
+
+    return (
+        <>
+            <button
+                ref={btnRef}
+                onClick={toggle}
                 className="w-9 h-9 rounded-full bg-gradient-to-br from-[#7C3AED] to-[#6366F1] border-2 border-white/20 cursor-pointer hover:border-white/40 transition-all"
             />
-
-            {open && (
-                <div className="absolute right-0 top-12 w-72 bg-[rgba(12,8,36,0.95)] backdrop-blur-xl border border-white/12 rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.5)] py-2 z-50">
-                    {/* User ID */}
-                    <div className="px-4 py-2.5 border-b border-white/8">
-                        <p className="text-[11px] font-medium text-[#9CA3AF] uppercase tracking-wider mb-1">Your User ID</p>
-                        <div className="flex items-center justify-between gap-2">
-                            <span className="text-[11px] font-mono font-semibold text-[#F3F4F6] break-all select-all">
-                                {userId || '...'}
-                            </span>
-                            <button
-                                onClick={handleCopy}
-                                className="p-1 rounded hover:bg-white/10 transition-colors"
-                                title="Copy ID"
-                            >
-                                {copied
-                                    ? <Check size={14} className="text-[#10B981]" />
-                                    : <Copy size={14} className="text-[#9CA3AF]" />
-                                }
-                            </button>
-                        </div>
-                    </div>
-
-                    {/* Sign Out */}
-                    <button
-                        onClick={handleSignOut}
-                        className="w-full flex items-center gap-3 px-4 py-2.5 text-[13px] font-medium text-[#F87171] hover:bg-white/8 transition-colors"
-                    >
-                        <LogOut size={16} />
-                        <span>Sign Out</span>
-                    </button>
-                </div>
-            )}
-        </div>
+            {dropdown}
+        </>
     );
 }

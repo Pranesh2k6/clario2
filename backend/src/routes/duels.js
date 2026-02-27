@@ -264,7 +264,7 @@ router.post('/accept/:duelId', firebaseAuth, async (req, res) => {
     try {
         // Only the challenged player (player_2) can accept
         const result = await query(
-            `UPDATE duels SET status = 'active', updated_at = NOW()
+            `UPDATE duels SET status = 'active', started_at = NOW()
              WHERE id = $1 AND player_2_id = $2 AND status = 'pending'
              RETURNING *`,
             [duelId, playerId]
@@ -524,8 +524,8 @@ router.post('/:id/submit', firebaseAuth, async (req, res) => {
         }
 
         // Check if this was the last question
-        const questionIds = duel.duel_questions || [];
-        const currentIdx = questionIds.indexOf(questionId);
+        const questionIds = (duel.duel_questions || []).map(String);
+        const currentIdx = questionIds.indexOf(String(questionId));
         const isLastQuestion = currentIdx >= questionIds.length - 1;
 
         if (isLastQuestion) {
@@ -549,11 +549,19 @@ router.post('/:id/submit', firebaseAuth, async (req, res) => {
             });
         }
 
+        // Fetch updated scores from DB
+        const updatedDuel = await query('SELECT player_1_score, player_2_score, player_1_id FROM duels WHERE id = $1', [duelId]);
+        const ud = updatedDuel.rows[0];
+        const myScore = isP1 ? ud.player_1_score : ud.player_2_score;
+        const theirScore = isP1 ? ud.player_2_score : ud.player_1_score;
+
         return res.status(200).json({
             isCorrect,
             points,
             correctAnswerIndex: qRes.rows[0].correct_answer_index,
             isLastQuestion,
+            playerScore: myScore,
+            opponentScore: theirScore,
         });
     } catch (err) {
         console.error('[Duels /:id/submit] Error:', err.message);
