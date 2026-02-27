@@ -512,7 +512,7 @@ export default function Duels() {
                   >
                     {/* Notification Glow */}
                     <motion.div
-                      className="absolute top-0 right-0 w-[200px] h-[200px] bg-gradient-to-bl from-[#FBBF24]/20 to-transparent rounded-full blur-[60px]"
+                      className="absolute top-0 right-0 w-[200px] h-[200px] bg-gradient-to-bl from-[#FBBF24]/20 to-transparent rounded-full blur-[60px] pointer-events-none"
                       animate={{
                         opacity: activeMode === 'pending' ? 1 : 0.3,
                         scale: activeMode === 'pending' ? 1.2 : 1,
@@ -537,7 +537,7 @@ export default function Duels() {
 
                     {/* Border Glow */}
                     <motion.div
-                      className="absolute inset-0 rounded-2xl border-2 border-[#FBBF24]/40 opacity-0 group-hover:opacity-100"
+                      className="absolute inset-0 rounded-2xl border-2 border-[#FBBF24]/40 opacity-0 group-hover:opacity-100 pointer-events-none"
                       animate={{
                         boxShadow: activeMode === 'pending'
                           ? '0 0 30px rgba(251, 191, 36, 0.4)'
@@ -547,60 +547,62 @@ export default function Duels() {
                     />
 
                     {/* Icon */}
-                    <div className="flex items-center justify-center w-16 h-16 mb-6 rounded-2xl bg-[#FBBF24]/20 border border-[#FBBF24]/30">
-                      <Trophy size={32} className="text-[#FBBF24]" />
-                    </div>
+                    <div className="relative z-10">
+                      <div className="flex items-center justify-center w-16 h-16 mb-6 rounded-2xl bg-[#FBBF24]/20 border border-[#FBBF24]/30">
+                        <Trophy size={32} className="text-[#FBBF24]" />
+                      </div>
 
-                    {/* Content */}
-                    <h3 className="text-[24px] font-bold text-[#F3F4F6] mb-3">
-                      Pending Challenges
-                    </h3>
-                    <p className="text-[14px] text-[#9CA3AF] mb-6 leading-relaxed">
-                      {pendingChallenges.length > 0
-                        ? `You have ${pendingChallenges.length} pending challenge${pendingChallenges.length > 1 ? 's' : ''}.`
-                        : 'No pending challenges right now.'}
-                    </p>
+                      {/* Content */}
+                      <h3 className="text-[24px] font-bold text-[#F3F4F6] mb-3">
+                        Pending Challenges
+                      </h3>
+                      <p className="text-[14px] text-[#9CA3AF] mb-6 leading-relaxed">
+                        {pendingChallenges.length > 0
+                          ? `You have ${pendingChallenges.length} pending challenge${pendingChallenges.length > 1 ? 's' : ''}.`
+                          : 'No pending challenges right now.'}
+                      </p>
 
-                    {/* Request List */}
-                    <div className="space-y-3 max-h-[200px] overflow-y-auto">
-                      {pendingChallenges.map((challenge) => (
-                        <div
-                          key={challenge.id}
-                          className="flex items-center justify-between p-3 bg-white/5 border border-white/10 rounded-xl"
-                        >
-                          <div className="flex items-center gap-3">
-                            <div
-                              className="w-10 h-10 rounded-full border-2 border-white/20 bg-gradient-to-br from-[#8B5CF6] to-[#6366F1]"
-                            />
-                            <div>
-                              <p className="text-[13px] font-semibold text-[#F3F4F6]">
-                                {challenge.challenger_name || 'Unknown'}
-                              </p>
-                              <p className="text-[11px] text-[#9CA3AF]">
-                                {challenge.challenger_xp || 0} XP
-                              </p>
+                      {/* Request List */}
+                      <div className="space-y-3 max-h-[200px] overflow-y-auto">
+                        {pendingChallenges.map((challenge) => (
+                          <div
+                            key={challenge.id}
+                            className="flex items-center justify-between p-3 bg-white/5 border border-white/10 rounded-xl"
+                          >
+                            <div className="flex items-center gap-3">
+                              <div
+                                className="w-10 h-10 rounded-full border-2 border-white/20 bg-gradient-to-br from-[#8B5CF6] to-[#6366F1]"
+                              />
+                              <div>
+                                <p className="text-[13px] font-semibold text-[#F3F4F6]">
+                                  {challenge.challenger_name || 'Unknown'}
+                                </p>
+                                <p className="text-[11px] text-[#9CA3AF]">
+                                  {challenge.challenger_xp || 0} XP
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <motion.button
+                                whileHover={{ scale: 1.1 }}
+                                whileTap={{ scale: 0.9 }}
+                                onClick={() => handleAccept(challenge.id)}
+                                className="p-2 bg-[#10B981]/20 border border-[#10B981]/40 rounded-lg hover:bg-[#10B981]/30 transition-colors"
+                              >
+                                <CheckCircle size={16} className="text-[#10B981]" />
+                              </motion.button>
+                              <motion.button
+                                whileHover={{ scale: 1.1 }}
+                                whileTap={{ scale: 0.9 }}
+                                onClick={() => handleDecline(challenge.id)}
+                                className="p-2 bg-[#EF4444]/20 border border-[#EF4444]/40 rounded-lg hover:bg-[#EF4444]/30 transition-colors"
+                              >
+                                <X size={16} className="text-[#EF4444]" />
+                              </motion.button>
                             </div>
                           </div>
-                          <div className="flex items-center gap-2">
-                            <motion.button
-                              whileHover={{ scale: 1.1 }}
-                              whileTap={{ scale: 0.9 }}
-                              onClick={() => handleAccept(challenge.id)}
-                              className="p-2 bg-[#10B981]/20 border border-[#10B981]/40 rounded-lg hover:bg-[#10B981]/30 transition-colors"
-                            >
-                              <CheckCircle size={16} className="text-[#10B981]" />
-                            </motion.button>
-                            <motion.button
-                              whileHover={{ scale: 1.1 }}
-                              whileTap={{ scale: 0.9 }}
-                              onClick={() => handleDecline(challenge.id)}
-                              className="p-2 bg-[#EF4444]/20 border border-[#EF4444]/40 rounded-lg hover:bg-[#EF4444]/30 transition-colors"
-                            >
-                              <X size={16} className="text-[#EF4444]" />
-                            </motion.button>
-                          </div>
-                        </div>
-                      ))}
+                        ))}
+                      </div>
                     </div>
                   </motion.div>
 
