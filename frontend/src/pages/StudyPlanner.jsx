@@ -17,6 +17,7 @@ import {
   Plus,
   Sparkles,
   ChevronRight,
+  ChevronLeft,
   X,
   Flame,
   Loader2
@@ -29,6 +30,7 @@ import {
 const clarioLogo = '';
 const SUBJECT_ICONS = { Physics: '🌌', Chemistry: '⚗️', Math: '📐' };
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 const navItems = [
   { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },
@@ -40,29 +42,36 @@ const navItems = [
   { icon: Settings, label: 'Settings', path: '/settings' },
 ];
 
-// ── Date helpers ──────────────────────────────────────────────────────────────
-function getWeekDates() {
-  const now = new Date();
-  const dayOfWeek = now.getDay(); // 0=Sun
+// ── Date helpers (accept a reference date) ────────────────────────────────────
+function getWeekDatesFor(ref) {
+  const d = new Date(ref);
+  const dayOfWeek = d.getDay(); // 0=Sun
   const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-  const monday = new Date(now);
-  monday.setDate(now.getDate() + mondayOffset);
+  const monday = new Date(d);
+  monday.setDate(d.getDate() + mondayOffset);
   const dates = [];
   for (let i = 0; i < 7; i++) {
-    const d = new Date(monday);
-    d.setDate(monday.getDate() + i);
-    dates.push(d);
+    const dd = new Date(monday);
+    dd.setDate(monday.getDate() + i);
+    dates.push(dd);
   }
   return dates;
 }
 
 function fmt(d) { return d.toISOString().split('T')[0]; }
 
-function getMonthRange() {
-  const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth(), 1);
-  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-  return { start: fmt(start), end: fmt(end), daysInMonth: end.getDate(), monthName: start.toLocaleString('default', { month: 'long' }), year: start.getFullYear() };
+function getMonthRangeFor(ref) {
+  const d = new Date(ref);
+  const start = new Date(d.getFullYear(), d.getMonth(), 1);
+  const end = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+  const firstDayOfWeek = start.getDay(); // 0=Sun
+  return {
+    start: fmt(start), end: fmt(end),
+    daysInMonth: end.getDate(),
+    monthName: MONTH_NAMES[start.getMonth()],
+    year: start.getFullYear(),
+    startOffset: firstDayOfWeek === 0 ? 6 : firstDayOfWeek - 1, // Mon-based offset
+  };
 }
 
 export default function StudyPlanner() {
@@ -73,12 +82,15 @@ export default function StudyPlanner() {
   const [showSmartPlanModal, setShowSmartPlanModal] = useState(false);
   const [isGeneratingPlan, setIsGeneratingPlan] = useState(false);
 
+  // Shared reference date — drives both week and month views
+  const [refDate, setRefDate] = useState(new Date());
+
   // Data from backend
   const [summary, setSummary] = useState(null);
   const [suggestions, setSuggestions] = useState([]);
 
-  // Week view
-  const weekDates = getWeekDates();
+  // Week view (computed from refDate)
+  const weekDates = getWeekDatesFor(refDate);
   const todayStr = fmt(new Date());
   const todayIdx = weekDates.findIndex(d => fmt(d) === todayStr);
   const [selectedDay, setSelectedDay] = useState(todayIdx >= 0 ? todayIdx : 0);
@@ -103,23 +115,55 @@ export default function StudyPlanner() {
   const [newTime, setNewTime] = useState(45);
   const [newDate, setNewDate] = useState(fmt(new Date()));
 
-  // ── Fetch summary ───────────────────────────────────────────────────────────
+  // ── Navigation helpers ──────────────────────────────────────────────────────
+  const goToPrev = () => {
+    const d = new Date(refDate);
+    if (viewMode === 'week') d.setDate(d.getDate() - 7);
+    else d.setMonth(d.getMonth() - 1);
+    setRefDate(d);
+    setSelectedDay(0);
+  };
+  const goToNext = () => {
+    const d = new Date(refDate);
+    if (viewMode === 'week') d.setDate(d.getDate() + 7);
+    else d.setMonth(d.getMonth() + 1);
+    setRefDate(d);
+    setSelectedDay(0);
+  };
+  const goToToday = () => {
+    setRefDate(new Date());
+    const wk = getWeekDatesFor(new Date());
+    const idx = wk.findIndex(d => fmt(d) === fmt(new Date()));
+    setSelectedDay(idx >= 0 ? idx : 0);
+  };
+
+  // Week/month label for the navigation bar
+  const weekLabel = `${weekDates[0].toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${weekDates[6].toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+  const monthRange = getMonthRangeFor(refDate);
+  const monthLabel = `${monthRange.monthName} ${monthRange.year}`;
+
+  // ── Fetch summary (re-run when refDate changes) ─────────────────────────────
   const fetchSummary = useCallback(async () => {
     try {
-      const { start, end } = getMonthRange();
-      const res = await getPlannerSummary(start, end);
+      const mr = getMonthRangeFor(refDate);
+      // Fetch a wide range so week view also has data even if week spans 2 months
+      const wk = getWeekDatesFor(refDate);
+      const rangeStart = fmt(wk[0]) < mr.start ? fmt(wk[0]) : mr.start;
+      const rangeEnd = fmt(wk[6]) > mr.end ? fmt(wk[6]) : mr.end;
+
+      const res = await getPlannerSummary(rangeStart, rangeEnd);
       setSummary(res.data);
 
       // Build month grid from dailyAggregates
-      const { daysInMonth } = getMonthRange();
       const aggregateMap = {};
       (res.data.dailyAggregates || []).forEach(a => {
-        const dayNum = new Date(a.date).getDate();
-        aggregateMap[dayNum] = a;
+        const key = a.date; // YYYY-MM-DD
+        aggregateMap[key] = a;
       });
-      const grid = Array.from({ length: daysInMonth }, (_, i) => {
+      const grid = Array.from({ length: mr.daysInMonth }, (_, i) => {
         const dayNum = i + 1;
-        const agg = aggregateMap[dayNum];
+        const dateStr = fmt(new Date(new Date(mr.start).getFullYear(), new Date(mr.start).getMonth(), dayNum));
+        const agg = aggregateMap[dateStr];
         return {
           day: dayNum,
           hours: agg ? agg.plannedHours : 0,
@@ -132,7 +176,7 @@ export default function StudyPlanner() {
     } catch (err) {
       console.error('Failed to fetch summary:', err);
     }
-  }, []);
+  }, [refDate]);
 
   // ── Fetch tasks for selected day ────────────────────────────────────────────
   const fetchTasks = useCallback(async (dateStr) => {
@@ -158,14 +202,15 @@ export default function StudyPlanner() {
     } catch { setSuggestions([]); }
   }, []);
 
-  // ── Initial load ────────────────────────────────────────────────────────────
+  // ── Initial load + refetch on refDate change ────────────────────────────────
   useEffect(() => { fetchSummary(); fetchSuggestions(); }, [fetchSummary, fetchSuggestions]);
 
-  // ── Refetch tasks when selected day changes ─────────────────────────────────
+  // ── Refetch tasks when selected day or weekDates change ─────────────────────
   useEffect(() => {
-    const dateStr = fmt(weekDates[selectedDay]);
-    fetchTasks(dateStr);
-  }, [selectedDay]);
+    if (weekDates[selectedDay]) {
+      fetchTasks(fmt(weekDates[selectedDay]));
+    }
+  }, [selectedDay, refDate]);
 
   // ── Build weekDays from summary data ────────────────────────────────────────
   const weekDays = weekDates.map((d) => {
@@ -223,8 +268,8 @@ export default function StudyPlanner() {
     setSelectedMonthDay(day);
     setShowDayPanel(true);
     try {
-      const { start } = getMonthRange();
-      const d = new Date(start);
+      const mr = getMonthRangeFor(refDate);
+      const d = new Date(mr.start);
       d.setDate(day);
       const res = await getTasksByDate(fmt(d));
       setMonthDayTasks(res.data.tasks || []);
@@ -401,13 +446,14 @@ export default function StudyPlanner() {
                 </div>
               </motion.div>
 
-              {/* View Toggle */}
+              {/* View Toggle + Navigation */}
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.1 }}
-                className="flex items-center justify-between"
+                className="flex items-center justify-between flex-wrap gap-3"
               >
+                {/* Left: view mode toggle */}
                 <div className="flex items-center gap-2 p-1 bg-white/5 border border-white/10 rounded-lg">
                   <button
                     onClick={() => setViewMode('week')}
@@ -435,6 +481,32 @@ export default function StudyPlanner() {
                   </button>
                 </div>
 
+                {/* Center: date navigation arrows + label */}
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={goToPrev}
+                    className="w-8 h-8 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 flex items-center justify-center transition-colors"
+                  >
+                    <ChevronLeft size={16} className="text-[#D1D5DB]" />
+                  </button>
+                  <span className="text-[13px] font-semibold text-[#F3F4F6] min-w-[180px] text-center">
+                    {viewMode === 'week' ? weekLabel : monthLabel}
+                  </span>
+                  <button
+                    onClick={goToNext}
+                    className="w-8 h-8 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 flex items-center justify-center transition-colors"
+                  >
+                    <ChevronRight size={16} className="text-[#D1D5DB]" />
+                  </button>
+                  <button
+                    onClick={goToToday}
+                    className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 text-[12px] font-medium text-[#9CA3AF] hover:text-[#F3F4F6] transition-colors"
+                  >
+                    Today
+                  </button>
+                </div>
+
+                {/* Right: action buttons */}
                 <div className="flex gap-2">
                   <motion.button
                     whileHover={{ scale: 1.02 }}
@@ -631,7 +703,7 @@ export default function StudyPlanner() {
                         transition={{ duration: 0.3 }}
                         className="p-6 bg-[rgba(12,8,36,0.7)] backdrop-blur-xl rounded-2xl border border-white/10"
                       >
-                        <h3 className="text-[15px] font-bold text-[#F3F4F6] mb-6">{getMonthRange().monthName} {getMonthRange().year}</h3>
+                        <h3 className="text-[15px] font-bold text-[#F3F4F6] mb-6">{monthRange.monthName} {monthRange.year}</h3>
 
                         {/* Calendar Grid */}
                         <div className="grid grid-cols-7 gap-2">
@@ -691,7 +763,7 @@ export default function StudyPlanner() {
                       >
                         <div className="flex items-center justify-between mb-5">
                           <h3 className="text-[15px] font-bold text-[#F3F4F6]">
-                            {getMonthRange().monthName} {selectedMonthDay}
+                            {monthRange.monthName} {selectedMonthDay}
                           </h3>
                           <button
                             onClick={() => setShowDayPanel(false)}
