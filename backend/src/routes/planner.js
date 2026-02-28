@@ -41,7 +41,7 @@ router.get('/summary', firebaseAuth, async (req, res) => {
         // 2. Daily aggregates for the date range
         const dailyResult = await query(
             `SELECT
-               scheduled_date,
+               TO_CHAR(scheduled_date, 'YYYY-MM-DD') AS date_str,
                COUNT(*) AS total_tasks,
                COUNT(*) FILTER (WHERE is_completed) AS completed_tasks,
                COALESCE(SUM(estimated_minutes), 0) AS planned_minutes,
@@ -54,21 +54,14 @@ router.get('/summary', firebaseAuth, async (req, res) => {
             [userId, startDate, endDate]
         );
 
-        const dailyAggregates = dailyResult.rows.map(row => {
-            // Normalize DATE to YYYY-MM-DD string (avoid timezone shifts)
-            const rawDate = row.scheduled_date;
-            const dateStr = rawDate instanceof Date
-                ? rawDate.toISOString().split('T')[0]
-                : String(rawDate).split('T')[0];
-            return {
-                date: dateStr,
-                totalTasks: parseInt(row.total_tasks),
-                completedTasks: parseInt(row.completed_tasks),
-                plannedHours: parseFloat((parseInt(row.planned_minutes) / 60).toFixed(1)),
-                completedHours: parseFloat((parseInt(row.completed_minutes) / 60).toFixed(1)),
-                subjects: row.subjects.filter(Boolean),
-            };
-        });
+        const dailyAggregates = dailyResult.rows.map(row => ({
+            date: row.date_str,
+            totalTasks: parseInt(row.total_tasks),
+            completedTasks: parseInt(row.completed_tasks),
+            plannedHours: parseFloat((parseInt(row.planned_minutes) / 60).toFixed(1)),
+            completedHours: parseFloat((parseInt(row.completed_minutes) / 60).toFixed(1)),
+            subjects: row.subjects.filter(Boolean),
+        }));
 
         // 3. Weekly totals (for overview bar)
         const now = new Date();
@@ -158,7 +151,8 @@ router.get('/tasks', firebaseAuth, async (req, res) => {
         if (!date) return res.status(400).json({ error: 'date is required' });
 
         const result = await query(
-            `SELECT id, subject, chapter, mode, estimated_minutes, scheduled_date,
+            `SELECT id, subject, chapter, mode, estimated_minutes,
+                    TO_CHAR(scheduled_date, 'YYYY-MM-DD') AS scheduled_date,
                     is_completed, completed_at, created_at
              FROM study_tasks
              WHERE user_id = $1 AND scheduled_date = $2
@@ -166,14 +160,7 @@ router.get('/tasks', firebaseAuth, async (req, res) => {
             [userId, date]
         );
 
-        return res.json({
-            tasks: result.rows.map(r => ({
-                ...r,
-                scheduled_date: r.scheduled_date instanceof Date
-                    ? r.scheduled_date.toISOString().split('T')[0]
-                    : String(r.scheduled_date).split('T')[0],
-            }))
-        });
+        return res.json({ tasks: result.rows });
     } catch (err) {
         console.error('[Planner /tasks] error:', err.message);
         return res.status(500).json({ error: 'Internal Server Error' });

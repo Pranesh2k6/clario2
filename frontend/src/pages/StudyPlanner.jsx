@@ -630,7 +630,7 @@ export default function StudyPlanner() {
                         >
                           <div className="flex items-center justify-between mb-5">
                             <h3 className="text-[15px] font-bold text-[#F3F4F6]">
-                              {weekDays[selectedDay].day}, Feb {weekDays[selectedDay].date}
+                              {weekDays[selectedDay].day}, {weekDates[selectedDay].toLocaleDateString('en-US', { month: 'short' })} {weekDays[selectedDay].date}
                             </h3>
                             <div className="px-3 py-1 bg-white/5 rounded-lg">
                               <span className="text-[12px] text-[#9CA3AF]">
