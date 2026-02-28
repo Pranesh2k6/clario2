@@ -22,7 +22,7 @@ const navItems = [
 export default function Duels() {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
-  const [friendCode, setFriendCode] = useState('');
+
   const [challengeUserId, setChallengeUserId] = useState('');
   const [activeMode, setActiveMode] = useState(null);
 
@@ -103,18 +103,7 @@ export default function Duels() {
     setLoading(l => ({ ...l, random: false }));
   };
 
-  // ── Friend Duel (Join by Code) ────────────────────────────────────────────
-  const handleJoinDuel = async () => {
-    if (!friendCode.trim()) return;
-    setLoading(l => ({ ...l, friend: true }));
-    try {
-      const res = await client.post('/duels/join', { duelCode: friendCode.trim() });
-      navigate(`/duels/match`, { state: { duelId: res.data.duel.id } });
-    } catch (err) {
-      alert(err.response?.data?.error || 'Could not join duel. Check the code.');
-    }
-    setLoading(l => ({ ...l, friend: false }));
-  };
+
 
   // ── Send Challenge by User ID ──────────────────────────────────────────────
   const handleSendChallenge = async () => {
@@ -450,35 +439,10 @@ export default function Duels() {
                         Duel a Friend
                       </h3>
                       <p className="text-[14px] text-[#9CA3AF] mb-6 leading-relaxed">
-                        Join by code or challenge by User ID.
+                        Challenge a friend by their User ID.
                       </p>
 
-                      {/* Join by Code */}
-                      <div className="space-y-3 mb-4">
-                        <input
-                          type="text"
-                          value={friendCode}
-                          onChange={(e) => setFriendCode(e.target.value.toUpperCase())}
-                          placeholder="Enter duel code"
-                          className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-[14px] text-[#F3F4F6] placeholder:text-[#6B7280] focus:outline-none focus:border-[#6366F1]/50 focus:bg-white/8 transition-all uppercase tracking-widest text-center"
-                        />
-                        <motion.button
-                          whileHover={{ scale: 1.05 }}
-                          whileTap={{ scale: 0.95 }}
-                          onClick={handleJoinDuel}
-                          disabled={loading.friend || !friendCode.trim()}
-                          className="w-full py-3 bg-[#6366F1] text-white rounded-xl font-semibold text-[14px] shadow-[0_4px_16px_rgba(99,102,241,0.3)] hover:shadow-[0_6px_24px_rgba(99,102,241,0.4)] transition-all disabled:opacity-60"
-                        >
-                          {loading.friend ? <Loader size={16} className="animate-spin mx-auto" /> : 'Join Duel'}
-                        </motion.button>
-                      </div>
 
-                      {/* OR divider */}
-                      <div className="flex items-center gap-3 my-4">
-                        <div className="flex-1 h-px bg-white/10" />
-                        <span className="text-[12px] font-semibold text-[#6B7280] uppercase">or</span>
-                        <div className="flex-1 h-px bg-white/10" />
-                      </div>
 
                       {/* Send Challenge by User ID */}
                       <div className="space-y-3">

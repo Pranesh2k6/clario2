@@ -22,28 +22,39 @@ function isValidUUID(str) {
     return typeof str === 'string' && UUID_REGEX.test(str);
 }
 
+// Map subject selection IDs to DB subject names
+const SUBJECT_MAP = { physics: 'Physics', chemistry: 'Chemistry', maths: 'Mathematics' };
+
 async function selectQuestions(subjectIds) {
     let q;
-    if (subjectIds && subjectIds.length > 0) {
+    if (subjectIds && subjectIds.length === 1 && SUBJECT_MAP[subjectIds[0]]) {
+        // Single subject selected → pick from that subject's questions
+        const subjectName = SUBJECT_MAP[subjectIds[0]];
         q = await query(
-            `SELECT q.id FROM questions q
-             JOIN question_concept_tags qct ON qct.question_id = q.id
-             JOIN concepts c ON c.id = qct.concept_id
-             JOIN chapters ch ON ch.id = c.chapter_id
-             WHERE ch.subject_id = ANY($1) AND q.is_active = true
+            `SELECT id FROM duel_questions_pool
+             WHERE subject = $1 AND is_active = true
              ORDER BY RANDOM() LIMIT $2`,
-            [subjectIds, QUESTIONS_PER_DUEL]
+            [subjectName, QUESTIONS_PER_DUEL]
         );
-        // Fallback: if not enough questions found for the selected subjects, use all
-        if (q.rows.length < QUESTIONS_PER_DUEL) {
+    } else if (subjectIds && subjectIds.length > 1) {
+        // Multiple subjects → pick from those subjects
+        const subjectNames = subjectIds.map(s => SUBJECT_MAP[s]).filter(Boolean);
+        if (subjectNames.length > 0) {
             q = await query(
-                `SELECT id FROM questions WHERE is_active = true ORDER BY RANDOM() LIMIT $1`,
-                [QUESTIONS_PER_DUEL]
+                `SELECT id FROM duel_questions_pool
+                 WHERE subject = ANY($1) AND is_active = true
+                 ORDER BY RANDOM() LIMIT $2`,
+                [subjectNames, QUESTIONS_PER_DUEL]
             );
         }
-    } else {
+    }
+
+    // Fallback: no subject selected or not enough found → use combined (Mixed)
+    if (!q || q.rows.length < QUESTIONS_PER_DUEL) {
         q = await query(
-            `SELECT id FROM questions WHERE is_active = true ORDER BY RANDOM() LIMIT $1`,
+            `SELECT id FROM duel_questions_pool
+             WHERE is_active = true
+             ORDER BY RANDOM() LIMIT $1`,
             [QUESTIONS_PER_DUEL]
         );
     }
@@ -364,13 +375,13 @@ router.get('/recent-activity', firebaseAuth, async (req, res) => {
 // ── GET /subjects/list ───────────────────────────────────────────────────────
 // List available subjects for subject selection UI.
 router.get('/subjects/list', async (req, res) => {
-    try {
-        const result = await query('SELECT id, title, icon_url FROM subjects WHERE is_active = true ORDER BY order_index');
-        return res.json({ subjects: result.rows });
-    } catch (err) {
-        console.error('[Duels /subjects/list] Error:', err.message);
-        return res.status(500).json({ error: 'Internal Server Error' });
-    }
+    return res.json({
+        subjects: [
+            { id: 'physics', title: 'Physics', icon_url: null },
+            { id: 'chemistry', title: 'Chemistry', icon_url: null },
+            { id: 'maths', title: 'Mathematics', icon_url: null },
+        ]
+    });
 });
 
 // ── GET /:id ─────────────────────────────────────────────────────────────────
@@ -391,16 +402,30 @@ router.get('/:id', firebaseAuth, async (req, res) => {
 
         const duel = duelRes.rows[0];
 
-        // Fetch questions WITHOUT correct_answer_index (prevents cheating)
+        // Fetch questions WITHOUT correct answer (prevents cheating)
         const qIds = duel.duel_questions || [];
         let questions = [];
         if (qIds.length > 0) {
+            // Convert string IDs to integers for the integer PK column
+            const intIds = qIds.map(id => parseInt(id, 10)).filter(n => !isNaN(n));
             const qRes = await query(
-                `SELECT id, content, difficulty_weight FROM questions WHERE id = ANY($1)`,
-                [qIds]
+                `SELECT id, question_text, question_type, options, elo FROM duel_questions_pool WHERE id = ANY($1)`,
+                [intIds]
             );
-            // Maintain the original order from duel_questions
-            questions = qIds.map(qid => qRes.rows.find(q => String(q.id) === String(qid))).filter(Boolean);
+            // Maintain the original order and map to frontend-expected format
+            questions = intIds.map(qid => {
+                const row = qRes.rows.find(q => q.id === qid);
+                if (!row) return null;
+                return {
+                    id: String(row.id),
+                    content: {
+                        text: row.question_text,
+                        options: row.options || null,  // JSONB → array or null
+                        image_url: null,
+                    },
+                    difficulty_weight: row.elo ? row.elo / 1000 : 1,
+                };
+            }).filter(Boolean);
         }
 
         // Fetch opponent info
@@ -476,11 +501,10 @@ router.post('/:id/submit', firebaseAuth, async (req, res) => {
     const { id: duelId } = req.params;
     const { questionId, selectedAnswerIndex, textAnswer } = req.body;
 
-    // FIX: Validate UUID formats
+    // FIX: Validate formats
     if (!isValidUUID(duelId)) return res.status(400).json({ error: 'Invalid duel ID format.' });
     if (!questionId) return res.status(400).json({ error: 'questionId is required' });
-    if (!isValidUUID(String(questionId))) return res.status(400).json({ error: 'Invalid question ID format.' });
-    if (selectedAnswerIndex === undefined)
+    if (selectedAnswerIndex === undefined && !textAnswer)
         return res.status(400).json({ error: 'selectedAnswerIndex is required' });
 
     try {
@@ -523,21 +547,23 @@ router.post('/:id/submit', firebaseAuth, async (req, res) => {
             return res.status(400).json({ error: `Expected question index ${expectedIdx}, got ${submittedIdx}.` });
         }
 
-        // Check correct answer
-        const qRes = await query('SELECT correct_answer_index, content FROM questions WHERE id = $1', [questionId]);
+        // Check correct answer from duel_questions_pool
+        const qRes = await query(
+            'SELECT question_type, options, correct_answer, correct_option_index FROM duel_questions_pool WHERE id = $1',
+            [parseInt(questionId, 10)]
+        );
         if (qRes.rows.length === 0) return res.status(404).json({ error: 'Question not found.' });
 
         const question = qRes.rows[0];
         let isCorrect = false;
 
-        // FIX: Handle fill-in-the-blank (text answer) vs MCQ
-        const hasOptions = question.content?.options && question.content.options.length > 0;
-        if (hasOptions) {
-            // MCQ: compare selectedAnswerIndex
-            isCorrect = question.correct_answer_index === selectedAnswerIndex;
+        // Handle MCQ vs fill-in-the-blank (SA)
+        if (question.question_type === 'MCQ' && question.options && question.options.length > 0) {
+            // MCQ: compare selectedAnswerIndex with correct_option_index
+            isCorrect = question.correct_option_index === selectedAnswerIndex;
         } else if (textAnswer && typeof textAnswer === 'string') {
             // Fill-in-the-blank: normalize and compare
-            const correctText = (question.content?.correct_answer || '').trim().toLowerCase();
+            const correctText = (question.correct_answer || '').trim().toLowerCase();
             const userText = textAnswer.trim().toLowerCase();
             isCorrect = correctText === userText;
         }
