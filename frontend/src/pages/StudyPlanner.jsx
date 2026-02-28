@@ -215,7 +215,7 @@ export default function StudyPlanner() {
   // ── Build weekDays from summary data ────────────────────────────────────────
   const weekDays = weekDates.map((d) => {
     const dateStr = fmt(d);
-    const agg = (summary?.dailyAggregates || []).find(a => fmt(new Date(a.date)) === dateStr);
+    const agg = (summary?.dailyAggregates || []).find(a => a.date === dateStr);
     return {
       day: DAY_NAMES[d.getDay()],
       date: d.getDate(),
