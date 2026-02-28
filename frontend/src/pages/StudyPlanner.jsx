@@ -58,7 +58,12 @@ function getWeekDatesFor(ref) {
   return dates;
 }
 
-function fmt(d) { return d.toISOString().split('T')[0]; }
+function fmt(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
 
 function getMonthRangeFor(ref) {
   const d = new Date(ref);
