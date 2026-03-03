@@ -442,6 +442,7 @@ router.get('/:id', firebaseAuth, async (req, res) => {
                 playerScore: duel.player_1_id === playerId ? duel.player_1_score : duel.player_2_score,
                 opponentScore: duel.player_1_id === playerId ? duel.player_2_score : duel.player_1_score,
                 isPlayer1: duel.player_1_id === playerId,
+                playerId: playerId,
             },
             questions,
             opponent: {
@@ -605,48 +606,100 @@ router.post('/:id/submit', firebaseAuth, async (req, res) => {
             });
         }
 
-        // Check if this was the last question
+        // Check if this was the last question for this player
         const currentIdx = duelQuestionIds.indexOf(String(questionId));
         const isLastQuestion = currentIdx >= duelQuestionIds.length - 1;
 
-        if (isLastQuestion) {
-            // FIX: Use SELECT ... FOR UPDATE to prevent winner race condition
-            const finalDuel = await query('SELECT * FROM duels WHERE id = $1 FOR UPDATE', [duelId]);
-            const d = finalDuel.rows[0];
+        let duelCompleted = false;
+        let finalResult = null;
 
-            // Only complete if still active (other player's request might have completed first)
-            if (d.status === 'active') {
-                const winnerId = d.player_1_score > d.player_2_score ? d.player_1_id
-                    : d.player_2_score > d.player_1_score ? d.player_2_id
-                        : null;
+        if (isLastQuestion) {
+            const isP1Finishing = duel.player_1_id === playerId;
+            const finishedCol = isP1Finishing ? 'player_1_finished_at' : 'player_2_finished_at';
+            const timeCol = isP1Finishing ? 'player_1_total_time_ms' : 'player_2_total_time_ms';
+            const totalTimeMs = req.body.totalTimeMs || 0;
+
+            // Mark THIS player as finished
+            await query(
+                `UPDATE duels SET ${finishedCol} = NOW(), ${timeCol} = $1 WHERE id = $2`,
+                [totalTimeMs, duelId]
+            );
+
+            // For AI duels: simultaneously mark AI as finished
+            if (duel.duel_type === 'ai') {
+                const aiTimeMs = Math.floor(Math.random() * 60000) + 120000; // 120-180s random
+                await query(
+                    `UPDATE duels SET player_2_finished_at = NOW(), player_2_total_time_ms = $1 WHERE id = $2`,
+                    [aiTimeMs, duelId]
+                );
+            }
+
+            // Notify room that this player finished
+            req.app.get('io')?.to(duelId).emit('duel:player_finished', {
+                playerId,
+                duelId,
+            });
+
+            // Re-fetch to check if BOTH players have now finished
+            const updatedDuel = await query('SELECT * FROM duels WHERE id = $1 FOR UPDATE', [duelId]);
+            const d = updatedDuel.rows[0];
+
+            if (d.player_1_finished_at && d.player_2_finished_at && d.status === 'active') {
+                // BOTH finished → determine winner
+                let winnerId = null;
+                let wonByTime = false;
+
+                if (d.player_1_score > d.player_2_score) {
+                    winnerId = d.player_1_id;
+                } else if (d.player_2_score > d.player_1_score) {
+                    winnerId = d.player_2_id;
+                } else {
+                    // Scores equal → tiebreak by time (lower = faster = winner)
+                    wonByTime = true;
+                    if (d.player_1_total_time_ms < d.player_2_total_time_ms) {
+                        winnerId = d.player_1_id;
+                    } else if (d.player_2_total_time_ms < d.player_1_total_time_ms) {
+                        winnerId = d.player_2_id;
+                    }
+                    // If times also equal → remains null (true draw)
+                }
 
                 await query(
                     `UPDATE duels SET status = 'completed', completed_at = NOW(), winner_id = $1 WHERE id = $2`,
                     [winnerId, duelId]
                 );
 
-                req.app.get('io')?.to(duelId).emit('duel:completed', {
+                finalResult = {
                     duelId,
                     winnerId,
                     player1Score: d.player_1_score,
                     player2Score: d.player_2_score,
-                });
+                    player1TimeMs: d.player_1_total_time_ms,
+                    player2TimeMs: d.player_2_total_time_ms,
+                    wonByTime,
+                };
+
+                req.app.get('io')?.to(duelId).emit('duel:completed', finalResult);
+                duelCompleted = true;
             }
         }
 
         // Fetch updated scores from DB
-        const updatedDuel = await query('SELECT player_1_score, player_2_score, player_1_id FROM duels WHERE id = $1', [duelId]);
-        const ud = updatedDuel.rows[0];
+        const updatedDuel2 = await query('SELECT player_1_score, player_2_score, player_1_id FROM duels WHERE id = $1', [duelId]);
+        const ud = updatedDuel2.rows[0];
         const myScore = isP1 ? ud.player_1_score : ud.player_2_score;
         const theirScore = isP1 ? ud.player_2_score : ud.player_1_score;
 
         return res.status(200).json({
             isCorrect,
             points,
-            correctAnswerIndex: question.correct_answer_index,
+            correctAnswerIndex: question.correct_option_index,
+            correctAnswerText: question.correct_answer,
             isLastQuestion,
             playerScore: myScore,
             opponentScore: theirScore,
+            duelCompleted,
+            finalResult,
         });
     } catch (err) {
         console.error('[Duels /:id/submit] Error:', err.message);

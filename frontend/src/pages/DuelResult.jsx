@@ -68,13 +68,33 @@ const roundData = [
 export default function DuelResult() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { playerScore = 0, opponentScore = 0, opponentForfeited = false, roundData: actualRoundData } = location.state || {};
+  const {
+    playerScore = 0,
+    opponentScore = 0,
+    opponentForfeited = false,
+    roundData: actualRoundData,
+    winnerId,
+    playerId,
+    wonByTime = false,
+    playerTimeMs,
+    opponentTimeMs,
+  } = location.state || {};
 
   // Use actual round data from the match, or fallback to empty
   const rounds = actualRoundData && actualRoundData.length > 0 ? actualRoundData : roundData;
 
-  const playerWon = opponentForfeited || playerScore > opponentScore;
-  const isDraw = !opponentForfeited && playerScore === opponentScore;
+  // Determine winner: use winnerId if available, else fallback to score comparison
+  const playerWon = opponentForfeited || (winnerId ? winnerId === playerId : playerScore > opponentScore);
+  const isDraw = !opponentForfeited && !winnerId && playerScore === opponentScore;
+
+  // Format time for display
+  const formatTime = (ms) => {
+    if (!ms) return '—';
+    const s = Math.round(ms / 1000);
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    return m > 0 ? `${m}m ${sec}s` : `${sec}s`;
+  };
 
   // Calculate accuracy by difficulty
   const easyCorrect = roundData.filter(r => r.difficulty === 'Easy' && r.correct).length;
@@ -177,11 +197,15 @@ export default function DuelResult() {
               <p className="text-[14px] text-[#9CA3AF]">
                 {opponentForfeited
                   ? 'Opponent forfeited — you win!'
-                  : playerWon
-                    ? 'You outperformed your opponent!'
-                    : isDraw
-                      ? 'Evenly matched battle!'
-                      : 'Better luck next time!'}
+                  : wonByTime && playerWon
+                    ? `Won by speed! (${formatTime(playerTimeMs)} vs ${formatTime(opponentTimeMs)})`
+                    : wonByTime && !playerWon && !isDraw
+                      ? `Lost by speed. (${formatTime(playerTimeMs)} vs ${formatTime(opponentTimeMs)})`
+                      : playerWon
+                        ? 'You outperformed your opponent!'
+                        : isDraw
+                          ? 'Evenly matched battle!'
+                          : 'Better luck next time!'}
               </p>
             </motion.div>
 

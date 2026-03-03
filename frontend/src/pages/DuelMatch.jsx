@@ -2,9 +2,10 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router';
 import { motion, AnimatePresence } from 'motion/react';
 import { SpaceBackground } from '../components/SpaceBackground';
+import LatexText from '../components/LatexText';
 import { Clock, CheckCircle, Loader, Zap, TrendingUp, X, LogOut } from 'lucide-react';
 import client from '../api/client';
-import { connectSocket, onOpponentForfeited } from '../api/socket';
+import { connectSocket, joinDuelRoom, onOpponentForfeited, onDuelCompleted, onPlayerFinished } from '../api/socket';
 
 export default function DuelMatch() {
   const navigate = useNavigate();
@@ -28,6 +29,9 @@ export default function DuelMatch() {
   const [opponentState, setOpponentState] = useState('solving');
   const [loadingDuel, setLoadingDuel] = useState(true);
   const [roundResults, setRoundResults] = useState([]);
+  const [totalTimeMs, setTotalTimeMs] = useState(0);
+  const [waitingForOpponent, setWaitingForOpponent] = useState(false);
+  const [opponentFinished, setOpponentFinished] = useState(false);
 
   const totalRounds = questions.length || 10;
   const currentQuestion = questions[currentRound - 1];
@@ -43,6 +47,8 @@ export default function DuelMatch() {
         setOpponent(res.data.opponent);
         setPlayerScore(res.data.duel.playerScore || 0);
         setOpponentScore(res.data.duel.opponentScore || 0);
+        // Store player_1_id so we know if we're player 1 or 2
+        playerIdRef.current = res.data.duel.playerId || null;
         setLoadingDuel(false);
 
         // Preload images
@@ -61,6 +67,7 @@ export default function DuelMatch() {
 
   // ── Forfeit on exit / detect opponent forfeit ─────────────────────────────
   const hasForfeited = useRef(false);
+  const playerIdRef = useRef(null);
 
   const forfeitDuel = useCallback(() => {
     if (!duelId || hasForfeited.current) return;
@@ -82,7 +89,7 @@ export default function DuelMatch() {
     // Listen for opponent forfeit
     const cleanup = onOpponentForfeited((data) => {
       if (data.duelId === duelId && !hasForfeited.current) {
-        hasForfeited.current = true; // prevent our own forfeit on unmount
+        hasForfeited.current = true;
         navigate('/duels/result', {
           state: {
             duelId,
@@ -95,12 +102,45 @@ export default function DuelMatch() {
       }
     });
 
+    // Listen for duel completion (both players finished)
+    const cleanupCompleted = onDuelCompleted((data) => {
+      if (data.duelId === duelId) {
+        hasForfeited.current = true; // prevent forfeit on unmount
+        const isP1 = duelData?.isPlayer1;
+        navigate('/duels/result', {
+          state: {
+            duelId,
+            playerScore: isP1 ? data.player1Score : data.player2Score,
+            opponentScore: isP1 ? data.player2Score : data.player1Score,
+            winnerId: data.winnerId,
+            playerId: playerIdRef.current,
+            wonByTime: data.wonByTime,
+            playerTimeMs: isP1 ? data.player1TimeMs : data.player2TimeMs,
+            opponentTimeMs: isP1 ? data.player2TimeMs : data.player1TimeMs,
+            roundData: roundResults,
+          },
+        });
+      }
+    });
+
+    // Listen for opponent finishing
+    const cleanupPlayerFinished = onPlayerFinished((data) => {
+      if (data.duelId === duelId && data.playerId !== playerIdRef.current) {
+        setOpponentFinished(true);
+      }
+    });
+
+    // Join the duel socket room
+    joinDuelRoom(duelId);
+
     // Forfeit on tab close / refresh
     const handleBeforeUnload = () => forfeitDuel();
     window.addEventListener('beforeunload', handleBeforeUnload);
 
     return () => {
       cleanup();
+      cleanupCompleted();
+      cleanupPlayerFinished();
       window.removeEventListener('beforeunload', handleBeforeUnload);
     };
   }, [duelId, playerScore, opponentScore, roundResults, forfeitDuel]);
@@ -138,9 +178,10 @@ export default function DuelMatch() {
         questionId: currentQuestion.id,
         selectedAnswerIndex: selectedAnswer ?? -1,
         textAnswer: textAnswer.trim() || null,
+        totalTimeMs: totalTimeMs + ((30 - timeLeft) * 1000),
       });
 
-      const { isCorrect: correct, points, correctAnswerIndex: correctIdx, isLastQuestion } = res.data;
+      const { isCorrect: correct, points, correctAnswerIndex: correctIdx, correctAnswerText, isLastQuestion, duelCompleted, finalResult } = res.data;
       setIsCorrect(correct);
       setCorrectAnswerIndex(correctIdx);
 
@@ -148,6 +189,11 @@ export default function DuelMatch() {
       setPlayerScore(res.data.playerScore);
       setOpponentScore(res.data.opponentScore);
       setOpponentState('submitted');
+
+      // Accumulate time
+      const roundTime = (30 - timeLeft) * 1000;
+      const newTotalTime = totalTimeMs + roundTime;
+      setTotalTimeMs(newTotalTime);
 
       // Store round result for DuelResult
       setRoundResults(prev => [...prev, {
@@ -157,6 +203,7 @@ export default function DuelMatch() {
         question: currentQuestion.content?.text || `Question ${currentRound}`,
         options: currentQuestion.content?.options || [],
         correctAnswer: correctIdx,
+        correctAnswerText: correctAnswerText || null,
         userAnswer: selectedAnswer,
         imageUrl: currentQuestion.content?.image_url,
       }]);
@@ -178,23 +225,38 @@ export default function DuelMatch() {
           setPlayerState('solving');
           setOpponentState('solving');
         } else {
-          navigate('/duels/result', {
-            state: {
-              duelId,
-              playerScore: res.data.playerScore,
-              opponentScore: res.data.opponentScore,
-              roundData: [...roundResults, {
-                round: currentRound,
-                correct,
-                timeTaken: 30 - timeLeft,
-                question: currentQuestion.content?.text || `Question ${currentRound}`,
-                options: currentQuestion.content?.options || [],
-                correctAnswer: correctIdx,
-                userAnswer: selectedAnswer,
-                imageUrl: currentQuestion.content?.image_url,
-              }],
-            },
-          });
+          // Last question — check if duel completed immediately (AI duels)
+          if (duelCompleted && finalResult) {
+            hasForfeited.current = true;
+            const isP1 = duelData?.isPlayer1;
+            navigate('/duels/result', {
+              state: {
+                duelId,
+                playerScore: isP1 ? finalResult.player1Score : finalResult.player2Score,
+                opponentScore: isP1 ? finalResult.player2Score : finalResult.player1Score,
+                winnerId: finalResult.winnerId,
+                playerId: playerIdRef.current,
+                wonByTime: finalResult.wonByTime,
+                playerTimeMs: isP1 ? finalResult.player1TimeMs : finalResult.player2TimeMs,
+                opponentTimeMs: isP1 ? finalResult.player2TimeMs : finalResult.player1TimeMs,
+                roundData: [...roundResults, {
+                  round: currentRound,
+                  correct,
+                  timeTaken: 30 - timeLeft,
+                  question: currentQuestion.content?.text || `Question ${currentRound}`,
+                  options: currentQuestion.content?.options || [],
+                  correctAnswer: correctIdx,
+                  correctAnswerText: correctAnswerText || null,
+                  userAnswer: selectedAnswer,
+                  imageUrl: currentQuestion.content?.image_url,
+                }],
+              },
+            });
+          } else {
+            // PvP: wait for opponent to finish — socket duel:completed will trigger navigation
+            setShowRoundResult(false);
+            setWaitingForOpponent(true);
+          }
         }
       }, advanceDelay);
     } catch (err) {
@@ -396,7 +458,7 @@ export default function DuelMatch() {
                   )}
 
                   <h2 className="text-[18px] font-bold text-[#F3F4F6] mb-4 leading-relaxed">
-                    {currentQuestion.content?.text || `Question ${currentRound}`}
+                    <LatexText text={currentQuestion.content?.text || `Question ${currentRound}`} />
                   </h2>
                 </div>
 
@@ -455,7 +517,7 @@ export default function DuelMatch() {
                                 : 'text-[#D1D5DB]'
                             }
                           `}>
-                            {option}
+                            <LatexText text={option} />
                           </span>
                         </div>
                       </motion.button>
@@ -694,6 +756,58 @@ export default function DuelMatch() {
                   </motion.div>
                 </>
               )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      {/* Waiting for Opponent Overlay */}
+      <AnimatePresence>
+        {waitingForOpponent && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md"
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              transition={{ type: "spring", damping: 25, stiffness: 300 }}
+              className="bg-[rgba(12,8,36,0.95)] backdrop-blur-xl rounded-2xl p-10 max-w-md mx-4 border-2 border-[#8B5CF6]/40 shadow-[0_0_60px_rgba(139,92,246,0.3)] text-center"
+            >
+              <motion.div
+                animate={{ rotate: 360 }}
+                transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+                className="mx-auto mb-6 w-14 h-14 rounded-full border-4 border-[#8B5CF6]/30 border-t-[#8B5CF6] flex items-center justify-center"
+              />
+              <h2 className="text-[22px] font-bold text-[#F3F4F6] mb-3">
+                You've Finished!
+              </h2>
+              <p className="text-[14px] text-[#9CA3AF] mb-2">
+                Waiting for your opponent to complete their quiz...
+              </p>
+              {opponentFinished && (
+                <motion.p
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="text-[13px] text-[#10B981] font-semibold"
+                >
+                  Opponent has finished! Calculating results...
+                </motion.p>
+              )}
+
+              {/* Score Preview */}
+              <div className="grid grid-cols-2 gap-4 mt-6">
+                <div className="p-4 bg-[#8B5CF6]/10 border border-[#8B5CF6]/30 rounded-xl">
+                  <p className="text-[11px] text-[#9CA3AF] mb-1">Your Score</p>
+                  <p className="text-[28px] font-bold text-[#8B5CF6]">{playerScore}</p>
+                </div>
+                <div className="p-4 bg-[#EC4899]/10 border border-[#EC4899]/30 rounded-xl">
+                  <p className="text-[11px] text-[#9CA3AF] mb-1">Opponent</p>
+                  <p className="text-[28px] font-bold text-[#EC4899]">{opponentScore}</p>
+                </div>
+              </div>
             </motion.div>
           </motion.div>
         )}

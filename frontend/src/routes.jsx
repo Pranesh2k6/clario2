@@ -4,6 +4,11 @@ import OnboardingSubjects from "./pages/OnboardingSubjects";
 import OnboardingGoal from "./pages/OnboardingGoal";
 import Dashboard from "./pages/Dashboard";
 import GalaxyMap from "./pages/GalaxyMap";
+import SubjectPage from "./pages/SubjectPage";
+import NewChapterDetail from "./pages/NewChapterDetail";
+import NewLearnMode from "./pages/NewLearnMode";
+import NewAdaptiveQuiz from "./pages/NewAdaptiveQuiz";
+import NewOperationVectorfall from "./pages/NewOperationVectorfall";
 import Planet from "./pages/Planet";
 import Chapter from "./pages/Chapter";
 import Learn from "./pages/Learn";
@@ -42,6 +47,26 @@ export const router = createBrowserRouter([
   {
     path: "/galaxy",
     element: <Protected><GalaxyMap /></Protected>,
+  },
+  {
+    path: "/subject/:subjectId",
+    element: <Protected><SubjectPage /></Protected>,
+  },
+  {
+    path: "/subject/:subjectId/chapter/:chapterId",
+    element: <Protected><NewChapterDetail /></Protected>,
+  },
+  {
+    path: "/subject/:subjectId/chapter/:chapterId/learn",
+    element: <Protected><NewLearnMode /></Protected>,
+  },
+  {
+    path: "/subject/:subjectId/chapter/:chapterId/quiz",
+    element: <Protected><NewAdaptiveQuiz /></Protected>,
+  },
+  {
+    path: "/subject/:subjectId/chapter/:chapterId/vectorfall",
+    element: <Protected><NewOperationVectorfall /></Protected>,
   },
   {
     path: "/planet/:subjectId",

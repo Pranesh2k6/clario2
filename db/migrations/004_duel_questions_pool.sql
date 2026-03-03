@@ -30,3 +30,8 @@ CREATE INDEX IF NOT EXISTS idx_dqp_difficulty ON duel_questions_pool (difficulty
 ALTER TABLE duels ALTER COLUMN duel_questions TYPE TEXT[] USING duel_questions::TEXT[];
 ALTER TABLE duels ALTER COLUMN subject_ids TYPE TEXT[] USING subject_ids::TEXT[];
 
+-- 3. Add time-tracking columns for two-phase duel completion
+ALTER TABLE duels ADD COLUMN IF NOT EXISTS player_1_finished_at TIMESTAMPTZ;
+ALTER TABLE duels ADD COLUMN IF NOT EXISTS player_2_finished_at TIMESTAMPTZ;
+ALTER TABLE duels ADD COLUMN IF NOT EXISTS player_1_total_time_ms INTEGER DEFAULT 0;
+ALTER TABLE duels ADD COLUMN IF NOT EXISTS player_2_total_time_ms INTEGER DEFAULT 0;

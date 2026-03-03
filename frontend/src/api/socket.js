@@ -67,3 +67,15 @@ export function onOpponentForfeited(cb) {
     s.on("duel:opponent_forfeited", cb);
     return () => s.off("duel:opponent_forfeited", cb);
 }
+
+export function onDuelCompleted(cb) {
+    const s = getSocket();
+    s.on("duel:completed", cb);
+    return () => s.off("duel:completed", cb);
+}
+
+export function onPlayerFinished(cb) {
+    const s = getSocket();
+    s.on("duel:player_finished", cb);
+    return () => s.off("duel:player_finished", cb);
+}

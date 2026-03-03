@@ -1,95 +1,34 @@
+import { useState } from 'react';
 import { ProfileDropdown } from '../components/ProfileDropdown';
 import { useNavigate } from 'react-router';
 import { motion } from 'motion/react';
 import { ArrowLeft, Zap } from 'lucide-react';
-const clarioLogo = '';
-import { SpiralGalaxy } from '../components/SpiralGalaxy';
+import { Pill } from '../components/Pill';
 
-// Subject galaxies with their properties
-const galaxies = [
-  {
-    id: 'physics',
-    name: 'Physics',
-    color: '#3B82F6',
-    glowColor: 'rgba(59, 130, 246, 0.4)',
-    emoji: '⚛️',
-    completion: 68,
-    position: { x: '25%', y: '35%' },
-    size: 'large',
-  },
-  {
-    id: 'chemistry',
-    name: 'Chemistry',
-    color: '#10B981',
-    glowColor: 'rgba(16, 185, 129, 0.4)',
-    emoji: '🧪',
-    completion: 45,
-    position: { x: '55%', y: '25%' },
-    size: 'medium',
-  },
-  {
-    id: 'math',
-    name: 'Math',
-    color: '#8B5CF6',
-    glowColor: 'rgba(139, 92, 246, 0.4)',
-    emoji: '📐',
-    completion: 82,
-    position: { x: '75%', y: '55%' },
-    size: 'medium',
-  },
-  {
-    id: 'biology',
-    name: 'Biology',
-    color: '#14B8A6',
-    glowColor: 'rgba(20, 184, 166, 0.4)',
-    emoji: '🧬',
-    completion: 34,
-    position: { x: '35%', y: '70%' },
-    size: 'small',
-  },
-  {
-    id: 'cs',
-    name: 'Computer Science',
-    color: '#F97316',
-    glowColor: 'rgba(249, 115, 22, 0.4)',
-    emoji: '💻',
-    completion: 56,
-    position: { x: '65%', y: '45%' },
-    size: 'small',
-  },
+// Subject galaxies — new compact format from newfrontend
+const planets = [
+  { id: 'physics', name: 'Physics', icon: '⚛️', color: '#4a80f5', grad: 'linear-gradient(135deg,#1e3a8a,#3b5bdb)', progress: 28, size: 120, x: 22, y: 40 },
+  { id: 'chemistry', name: 'Chemistry', icon: '🧪', color: '#10b981', grad: 'linear-gradient(135deg,#064e3b,#059669)', progress: 15, size: 104, x: 62, y: 26 },
+  { id: 'math', name: 'Mathematics', icon: '📐', color: '#8a4bff', grad: 'linear-gradient(135deg,#4c1d95,#7c3aed)', progress: 42, size: 112, x: 75, y: 60 },
 ];
 
 export default function GalaxyMap() {
   const navigate = useNavigate();
+  const [hov, setHov] = useState(null);
 
   const handleGalaxyClick = (galaxyId) => {
-    // Navigate to planet/subject page
-    navigate(`/planet/${galaxyId}`);
-  };
-
-  const getSizeValue = (size) => {
-    switch (size) {
-      case 'large':
-        return 160;
-      case 'medium':
-        return 128;
-      case 'small':
-        return 96;
-      default:
-        return 128;
-    }
+    navigate(`/subject/${galaxyId}`);
   };
 
   return (
     <div className="relative min-h-screen w-full overflow-hidden">
       {/* Enhanced Space Background */}
       <div className="absolute inset-0 bg-gradient-to-b from-[#1a0d3e] via-[#0D0A2E] to-[#020114]">
-        {/* Denser star field */}
+        {/* Dense star field */}
         <div className="absolute inset-0">
           {[...Array(300)].map((_, i) => {
             const isBright = i % 5 === 0;
             const size = isBright ? Math.random() * 2.5 + 1 : Math.random() * 1.5 + 0.5;
-            
             return (
               <div
                 key={i}
@@ -106,16 +45,15 @@ export default function GalaxyMap() {
             );
           })}
         </div>
-        
-        {/* Richer nebula effect with depth */}
+        {/* Nebula effects */}
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_30%_40%,_rgba(124,58,237,0.12)_0%,_transparent_50%)]" />
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_70%_60%,_rgba(99,102,241,0.08)_0%,_transparent_50%)]" />
-        
-        {/* Darker edges for depth */}
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_transparent_20%,_rgba(2,1,20,0.8)_100%)]" />
       </div>
 
-      {/* Top Overlay Bar */}
+      {/* ============================================================ */}
+      {/* OLD Top Overlay Bar — STRICTLY RETAINED                     */}
+      {/* ============================================================ */}
       <div className="relative z-20 flex items-center justify-between px-6 lg:px-8 py-5">
         {/* Left - Back Button */}
         <motion.button
@@ -130,143 +68,110 @@ export default function GalaxyMap() {
 
         {/* Right - XP and Profile */}
         <div className="flex items-center gap-4">
-          {/* XP */}
           <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[rgba(12,8,36,0.7)] backdrop-blur-xl border border-white/12">
             <Zap size={16} className="text-[#FBBF24]" />
             <span className="text-[13px] font-semibold text-[#F3F4F6]">1,250 XP</span>
           </div>
-
-          {/* Profile Avatar */}
           <ProfileDropdown />
         </div>
       </div>
 
-      {/* Galaxy Display Area */}
-      <motion.div 
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-        className="relative z-10 h-[calc(100vh-80px)] w-full"
-      >
-        {/* Title overlay at top center */}
-        <div className="absolute top-8 left-1/2 -translate-x-1/2 text-center">
-          <h1 className="text-[32px] lg:text-[38px] font-bold text-[#F3F4F6] tracking-[-0.02em] mb-2">
+      {/* ============================================================ */}
+      {/* NEW Galaxy Display Area — CSS-animated planets (newfrontend) */}
+      {/* ============================================================ */}
+      <div style={{ padding: '0 28px 40px', maxWidth: 1400, margin: '0 auto' }}>
+        <div style={{ textAlign: 'center', marginBottom: 8, animation: 'fadeUp 0.4s both' }}>
+          <h1 style={{ fontSize: 34, fontWeight: 900, color: 'white', letterSpacing: '-0.025em' }}>
             Choose Your Galaxy
           </h1>
-          <p className="text-[14px] text-[#9CA3AF]">
+          <p style={{ color: '#9CA3AF', fontSize: 15, marginTop: 8 }}>
             Select a subject to begin your exploration
           </p>
         </div>
 
-        {/* Floating Galaxy Planets - Loose orbit cluster */}
-        <div className="relative w-full h-full">
-          {galaxies.map((galaxy, index) => {
-            const sizeValue = getSizeValue(galaxy.size);
-            
+        <div style={{ position: 'relative', height: 'calc(100vh - 280px)', minHeight: 420 }}>
+          {/* Orbit lines */}
+          {[420, 580, 720].map((r, i) => (
+            <div
+              key={i}
+              style={{
+                position: 'absolute', top: '50%', left: '50%',
+                transform: 'translate(-50%,-50%)',
+                width: r, height: r * 0.52,
+                borderRadius: '50%',
+                border: `1px solid rgba(139,92,246,${0.07 - i * 0.02})`,
+                pointerEvents: 'none',
+              }}
+            />
+          ))}
+
+          {/* Floating planets */}
+          {planets.map((p) => {
+            const isH = hov === p.id;
             return (
-              <motion.div
-                key={galaxy.id}
-                initial={{ opacity: 0, scale: 0.8 }}
-                animate={{ 
-                  opacity: 1, 
-                  scale: 1,
-                  y: [0, -15, 0],
-                }}
-                transition={{
-                  opacity: { duration: 0.6, delay: index * 0.1 },
-                  scale: { duration: 0.6, delay: index * 0.1 },
-                  y: {
-                    duration: 4 + index * 0.5,
-                    repeat: Infinity,
-                    ease: "easeInOut",
-                  }
-                }}
-                className="absolute"
+              <div
+                key={p.id}
                 style={{
-                  left: galaxy.position.x,
-                  top: galaxy.position.y,
-                  transform: 'translate(-50%, -50%)',
+                  position: 'absolute',
+                  left: `${p.x}%`,
+                  top: `${p.y}%`,
+                  transform: `translate(-50%,-50%) scale(${isH ? 1.1 : 1})`,
+                  transition: 'transform 0.25s ease',
+                  cursor: 'pointer',
+                  textAlign: 'center',
+                  animation: `floatY ${6 + (p.x % 4)}s ease-in-out infinite`,
                 }}
+                onMouseEnter={() => setHov(p.id)}
+                onMouseLeave={() => setHov(null)}
+                onClick={() => handleGalaxyClick(p.id)}
               >
-                <motion.button
-                  onClick={() => handleGalaxyClick(galaxy.id)}
-                  whileHover={{ scale: 1.1 }}
-                  whileTap={{ scale: 0.95 }}
-                  className="relative group"
-                >
-                  {/* Illustrated Planet */}
-                  <SpiralGalaxy
-                    size={sizeValue}
-                    color={galaxy.color}
-                    name={galaxy.name}
-                    glowColor={galaxy.glowColor}
-                    animate={true}
-                  />
+                {/* Pulse ring on hover */}
+                {isH && (
+                  <div style={{
+                    position: 'absolute', top: '50%', left: '50%',
+                    width: p.size + 24, height: p.size + 24,
+                    borderRadius: '50%',
+                    border: `2px solid ${p.color}`,
+                    boxShadow: `0 0 24px ${p.color}60`,
+                    animation: 'pulseRing 1.5s ease-out infinite',
+                    pointerEvents: 'none',
+                  }} />
+                )}
 
-                  {/* Emoji overlay */}
-                  <div 
-                    className="absolute inset-0 flex items-center justify-center pointer-events-none"
-                    style={{ fontSize: galaxy.size === 'large' ? '40px' : galaxy.size === 'medium' ? '32px' : '24px' }}
-                  >
-                    {galaxy.emoji}
+                {/* Planet sphere */}
+                <div style={{
+                  width: p.size, height: p.size,
+                  borderRadius: '50%',
+                  background: p.grad,
+                  boxShadow: isH
+                    ? `0 0 50px ${p.color}80, inset -18px -18px 35px rgba(0,0,0,0.45)`
+                    : `0 0 22px ${p.color}40`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: p.size * 0.32,
+                  margin: '0 auto 12px',
+                  border: isH ? `2px solid ${p.color}70` : '2px solid transparent',
+                  transition: 'all 0.25s',
+                }}>
+                  {p.icon}
+                </div>
+
+                {/* Label below planet */}
+                <p style={{ fontWeight: 800, fontSize: 16, color: isH ? 'white' : '#c4cfe8', marginBottom: 3 }}>
+                  {p.name}
+                </p>
+                <p style={{ fontSize: 13, color: '#9CA3AF' }}>
+                  {p.progress}% Complete
+                </p>
+                {isH && (
+                  <div style={{ marginTop: 8 }}>
+                    <Pill color={p.color}>Enter Galaxy →</Pill>
                   </div>
-
-                  {/* Completion ring overlay */}
-                  <svg className="absolute inset-0 w-full h-full -rotate-90 pointer-events-none">
-                    <circle
-                      cx="50%"
-                      cy="50%"
-                      r="48%"
-                      fill="none"
-                      stroke="rgba(255,255,255,0.15)"
-                      strokeWidth="3"
-                    />
-                    <circle
-                      cx="50%"
-                      cy="50%"
-                      r="48%"
-                      fill="none"
-                      stroke="rgba(255,255,255,0.7)"
-                      strokeWidth="3"
-                      strokeDasharray={`${2 * Math.PI * (sizeValue * 0.48)} ${2 * Math.PI * (sizeValue * 0.48)}`}
-                      strokeDashoffset={2 * Math.PI * (sizeValue * 0.48) * (1 - galaxy.completion / 100)}
-                      strokeLinecap="round"
-                      className="transition-all duration-500"
-                    />
-                  </svg>
-
-                  {/* Label below planet */}
-                  <div className="absolute top-full left-1/2 -translate-x-1/2 mt-6 whitespace-nowrap">
-                    <div className="text-[14px] font-semibold text-[#F3F4F6] mb-1">
-                      {galaxy.name}
-                    </div>
-                    <div className="text-[12px] text-[#9CA3AF]">
-                      {galaxy.completion}% Complete
-                    </div>
-                  </div>
-
-                  {/* Rotating ring effect on hover */}
-                  <motion.div
-                    className="absolute inset-0 rounded-full border-2 border-white/0 group-hover:border-white/30"
-                    style={{
-                      transform: 'scale(1.15)',
-                    }}
-                    initial={false}
-                    animate={{
-                      rotate: 360,
-                    }}
-                    transition={{
-                      duration: 20,
-                      repeat: Infinity,
-                      ease: "linear",
-                    }}
-                  />
-                </motion.button>
-              </motion.div>
+                )}
+              </div>
             );
           })}
         </div>
-      </motion.div>
+      </div>
     </div>
   );
 }
