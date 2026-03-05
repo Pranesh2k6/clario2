@@ -2,9 +2,10 @@ import { useLocation, useNavigate } from 'react-router';
 import { motion, AnimatePresence } from 'motion/react';
 import { SpaceBackground } from '../components/SpaceBackground';
 import { Trophy, TrendingUp, Target, Zap, RotateCcw, Home, CheckCircle, X, Clock, BarChart3, AlertCircle, Gauge, Award, Brain } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { FlippableQuestionCard } from '../components/FlippableQuestionCard';
 import { PerformanceStatsGraph } from '../components/PerformanceStatsGraph';
+import { getWeakTopics, getDashboardAnalytics } from '../api/analytics';
 
 // Mock round data with full questions
 const roundData = [
@@ -80,12 +81,32 @@ export default function DuelResult() {
     opponentTimeMs,
   } = location.state || {};
 
-  // Use actual round data from the match, or fallback to empty
+  // Use actual round data from the match, or fallback to mock
   const rounds = actualRoundData && actualRoundData.length > 0 ? actualRoundData : roundData;
 
-  // Determine winner: use winnerId if available, else fallback to score comparison
+  // Determine winner
   const playerWon = opponentForfeited || (winnerId ? winnerId === playerId : playerScore > opponentScore);
   const isDraw = !opponentForfeited && !winnerId && playerScore === opponentScore;
+
+  // ── Dynamic analytics state ─────────────────────────────────────────────────
+  const [weakTopicsData, setWeakTopicsData] = useState([]);
+  const [dashboardData, setDashboardData] = useState(null);
+
+  useEffect(() => {
+    const fetchAnalytics = async () => {
+      try {
+        const [weakRes, dashRes] = await Promise.allSettled([
+          getWeakTopics(),
+          getDashboardAnalytics(),
+        ]);
+        if (weakRes.status === 'fulfilled') setWeakTopicsData(weakRes.value.data || []);
+        if (dashRes.status === 'fulfilled') setDashboardData(dashRes.value.data || null);
+      } catch (err) {
+        console.error('[DuelResult] Analytics fetch failed:', err);
+      }
+    };
+    fetchAnalytics();
+  }, []);
 
   // Format time for display
   const formatTime = (ms) => {
@@ -96,24 +117,93 @@ export default function DuelResult() {
     return m > 0 ? `${m}m ${sec}s` : `${sec}s`;
   };
 
-  // Calculate accuracy by difficulty
-  const easyCorrect = roundData.filter(r => r.difficulty === 'Easy' && r.correct).length;
-  const easyTotal = roundData.filter(r => r.difficulty === 'Easy').length;
-  const mediumCorrect = roundData.filter(r => r.difficulty === 'Medium' && r.correct).length;
-  const mediumTotal = roundData.filter(r => r.difficulty === 'Medium').length;
-  const hardCorrect = roundData.filter(r => r.difficulty === 'Hard' && r.correct).length;
-  const hardTotal = roundData.filter(r => r.difficulty === 'Hard').length;
+  // ── Stats computed from this duel's round data ──────────────────────────────
+  const easyCorrect = rounds.filter(r => r.difficulty === 'Easy' && r.correct).length;
+  const easyTotal = rounds.filter(r => r.difficulty === 'Easy').length;
+  const mediumCorrect = rounds.filter(r => r.difficulty === 'Medium' && r.correct).length;
+  const mediumTotal = rounds.filter(r => r.difficulty === 'Medium').length;
+  const hardCorrect = rounds.filter(r => r.difficulty === 'Hard' && r.correct).length;
+  const hardTotal = rounds.filter(r => r.difficulty === 'Hard').length;
 
   const easyAccuracy = easyTotal > 0 ? (easyCorrect / easyTotal) * 100 : 0;
   const mediumAccuracy = mediumTotal > 0 ? (mediumCorrect / mediumTotal) * 100 : 0;
   const hardAccuracy = hardTotal > 0 ? (hardCorrect / hardTotal) * 100 : 0;
 
-  // Calculate stats
-  const totalCorrect = roundData.filter(r => r.correct).length;
-  const overallAccuracy = (totalCorrect / roundData.length) * 100;
-  const avgResponseTime = Math.round(roundData.reduce((sum, r) => sum + r.timeTaken, 0) / roundData.length);
-  const fastestCorrect = Math.min(...roundData.filter(r => r.correct).map(r => r.timeTaken));
-  const hardestSolved = roundData.some(r => r.difficulty === 'Hard' && r.correct);
+  const totalCorrect = rounds.filter(r => r.correct).length;
+  const overallAccuracy = rounds.length > 0 ? (totalCorrect / rounds.length) * 100 : 0;
+  const avgResponseTime = rounds.length > 0 ? Math.round(rounds.reduce((sum, r) => sum + r.timeTaken, 0) / rounds.length) : 0;
+  const correctRounds = rounds.filter(r => r.correct);
+  const fastestCorrect = correctRounds.length > 0 ? Math.min(...correctRounds.map(r => r.timeTaken)) : 0;
+  const hardestSolved = rounds.some(r => r.difficulty === 'Hard' && r.correct);
+
+  // ── Dynamic Key Insights (computed from this duel) ──────────────────────────
+  const dynamicInsights = useMemo(() => {
+    const insights = [];
+
+    // Speed insight
+    if (avgResponseTime < 15) {
+      insights.push('Quick responses — you answered most questions under 15s');
+    } else if (avgResponseTime > 20) {
+      insights.push('Taking your time — average response over 20s per question');
+    }
+
+    // Accuracy by difficulty
+    if (easyTotal > 0 && easyAccuracy === 100) {
+      insights.push('Perfect accuracy on easy questions');
+    }
+    if (mediumTotal > 0 && mediumAccuracy < 50) {
+      insights.push('Accuracy dropped on medium difficulty — review core concepts');
+    }
+    if (hardTotal > 0 && hardAccuracy > 50) {
+      insights.push('Strong performance on hard questions — impressive!');
+    } else if (hardTotal > 0 && hardAccuracy === 0) {
+      insights.push('Missed all hard questions — practice at higher difficulty');
+    }
+
+    // Overall performance
+    if (overallAccuracy >= 80) {
+      insights.push(`Excellent overall accuracy: ${Math.round(overallAccuracy)}%`);
+    } else if (overallAccuracy < 40) {
+      insights.push(`Low accuracy this duel (${Math.round(overallAccuracy)}%) — focus on weak areas`);
+    }
+
+    // Score comparison
+    if (playerWon && playerScore - opponentScore >= 300) {
+      insights.push('Dominant victory — outscored opponent by 300+ points');
+    }
+
+    // Ensure we always have at least 2 insights
+    if (insights.length === 0) {
+      insights.push(`Overall accuracy: ${Math.round(overallAccuracy)}%`);
+      insights.push(`Average response time: ${avgResponseTime}s`);
+    } else if (insights.length === 1) {
+      insights.push(`Average response time: ${avgResponseTime}s per question`);
+    }
+
+    return insights.slice(0, 4);
+  }, [rounds, avgResponseTime, easyTotal, easyAccuracy, mediumTotal, mediumAccuracy, hardTotal, hardAccuracy, overallAccuracy, playerWon, playerScore, opponentScore]);
+
+  // ── Dynamic Focus Areas (from intelligence system, fallback to duel data) ──
+  const focusAreas = useMemo(() => {
+    // Prefer analytics engine weak topics
+    if (weakTopicsData.length > 0) {
+      return weakTopicsData.slice(0, 3).map(t => ({
+        title: `${t.topic}${t.subtopic ? ' — ' + t.subtopic : ''}`,
+        detail: `Mastery: ${Math.round((t.mastery_probability || 0) * 100)}% across ${t.total_attempts} attempts`,
+      }));
+    }
+
+    // Fallback: generate from this duel's incorrect answers
+    const incorrectRounds = rounds.filter(r => !r.correct);
+    if (incorrectRounds.length === 0) {
+      return [{ title: 'No weak areas detected', detail: 'Perfect duel performance!' }];
+    }
+
+    return incorrectRounds.slice(0, 3).map(r => ({
+      title: `Round ${r.round} — ${r.difficulty} difficulty`,
+      detail: `Answered in ${r.timeTaken}s — review the explanation`,
+    }));
+  }, [weakTopicsData, rounds]);
 
   return (
     <div className="relative min-h-screen w-full overflow-hidden">
@@ -293,7 +383,7 @@ export default function DuelResult() {
               </div>
             </motion.div>
 
-            {/* Key Insights - NEW */}
+            {/* Key Insights - DYNAMIC */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -302,22 +392,12 @@ export default function DuelResult() {
             >
               <h3 className="text-[13px] font-semibold text-[#F3F4F6] mb-3">Key Insights</h3>
               <ul className="space-y-2">
-                <li className="flex items-start gap-2 text-[12px] text-[#D1D5DB]">
-                  <div className="w-1 h-1 rounded-full bg-[#6366F1] mt-1.5 flex-shrink-0" />
-                  <span>Strong on trajectory calculations</span>
-                </li>
-                <li className="flex items-start gap-2 text-[12px] text-[#D1D5DB]">
-                  <div className="w-1 h-1 rounded-full bg-[#6366F1] mt-1.5 flex-shrink-0" />
-                  <span>Faster on easy questions than opponent</span>
-                </li>
-                <li className="flex items-start gap-2 text-[12px] text-[#D1D5DB]">
-                  <div className="w-1 h-1 rounded-full bg-[#6366F1] mt-1.5 flex-shrink-0" />
-                  <span>Slower on vector reasoning steps</span>
-                </li>
-                <li className="flex items-start gap-2 text-[12px] text-[#D1D5DB]">
-                  <div className="w-1 h-1 rounded-full bg-[#6366F1] mt-1.5 flex-shrink-0" />
-                  <span>Accuracy dropped on medium difficulty</span>
-                </li>
+                {dynamicInsights.map((insight, i) => (
+                  <li key={i} className="flex items-start gap-2 text-[12px] text-[#D1D5DB]">
+                    <div className="w-1 h-1 rounded-full bg-[#6366F1] mt-1.5 flex-shrink-0" />
+                    <span>{insight}</span>
+                  </li>
+                ))}
               </ul>
             </motion.div>
 
@@ -372,7 +452,7 @@ export default function DuelResult() {
                   hardestSolved={hardestSolved}
                 />
 
-                {/* Focus Areas Card - NEW */}
+                {/* Focus Areas Card - DYNAMIC */}
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -385,27 +465,15 @@ export default function DuelResult() {
                   </div>
 
                   <div className="space-y-3">
-                    <div className="flex items-start gap-3">
-                      <Target size={14} className="text-[#F59E0B] mt-0.5 flex-shrink-0" />
-                      <div>
-                        <p className="text-[12px] font-medium text-[#F3F4F6] mb-1">Trajectory decomposition</p>
-                        <p className="text-[11px] text-[#D1D5DB]">Missed both medium questions</p>
+                    {focusAreas.map((area, i) => (
+                      <div key={i} className="flex items-start gap-3">
+                        <Target size={14} className="text-[#F59E0B] mt-0.5 flex-shrink-0" />
+                        <div>
+                          <p className="text-[12px] font-medium text-[#F3F4F6] mb-1">{area.title}</p>
+                          <p className="text-[11px] text-[#D1D5DB]">{area.detail}</p>
+                        </div>
                       </div>
-                    </div>
-                    <div className="flex items-start gap-3">
-                      <Target size={14} className="text-[#F59E0B] mt-0.5 flex-shrink-0" />
-                      <div>
-                        <p className="text-[12px] font-medium text-[#F3F4F6] mb-1">Vector resolution</p>
-                        <p className="text-[11px] text-[#D1D5DB]">Slower than average response time</p>
-                      </div>
-                    </div>
-                    <div className="flex items-start gap-3">
-                      <Target size={14} className="text-[#F59E0B] mt-0.5 flex-shrink-0" />
-                      <div>
-                        <p className="text-[12px] font-medium text-[#F3F4F6] mb-1">Range optimization</p>
-                        <p className="text-[11px] text-[#D1D5DB]">Incorrect formula choice</p>
-                      </div>
-                    </div>
+                    ))}
                   </div>
                 </motion.div>
 
@@ -413,7 +481,7 @@ export default function DuelResult() {
                 <div>
                   <h3 className="text-[14px] font-semibold text-[#D1D5DB] mb-3">Question Review</h3>
                   <div className="space-y-3">
-                    {roundData.map((round, index) => (
+                    {rounds.map((round, index) => (
                       <FlippableQuestionCard
                         key={round.round}
                         round={round.round}

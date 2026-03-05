@@ -26,6 +26,7 @@ import {
   getPlannerSummary, getTasksByDate, createTask,
   toggleTaskCompletion, getSuggestions, generateSmartPlan,
 } from '../api/planner';
+import { getDashboardAnalytics, getRecommendations, completeRecommendation } from '../api/analytics';
 
 const clarioLogo = '';
 const SUBJECT_ICONS = { Physics: '🌌', Chemistry: '⚗️', Math: '📐' };
@@ -93,6 +94,10 @@ export default function StudyPlanner() {
   // Data from backend
   const [summary, setSummary] = useState(null);
   const [suggestions, setSuggestions] = useState([]);
+
+  // Analytics data
+  const [analyticsData, setAnalyticsData] = useState(null);
+  const [recommendations, setRecommendations] = useState([]);
 
   // Week view (computed from refDate)
   const weekDates = getWeekDatesFor(refDate);
@@ -207,8 +212,22 @@ export default function StudyPlanner() {
     } catch { setSuggestions([]); }
   }, []);
 
+  // ── Fetch analytics data ──────────────────────────────────────────────────
+  const fetchAnalytics = useCallback(async () => {
+    try {
+      const [dashRes, recsRes] = await Promise.allSettled([
+        getDashboardAnalytics(),
+        getRecommendations(),
+      ]);
+      if (dashRes.status === 'fulfilled') setAnalyticsData(dashRes.value.data || null);
+      if (recsRes.status === 'fulfilled') setRecommendations(recsRes.value.data || []);
+    } catch (err) {
+      console.error('Failed to fetch analytics:', err);
+    }
+  }, []);
+
   // ── Initial load + refetch on refDate change ────────────────────────────────
-  useEffect(() => { fetchSummary(); fetchSuggestions(); }, [fetchSummary, fetchSuggestions]);
+  useEffect(() => { fetchSummary(); fetchSuggestions(); fetchAnalytics(); }, [fetchSummary, fetchSuggestions, fetchAnalytics]);
 
   // ── Refetch tasks when selected day or weekDates change ─────────────────────
   useEffect(() => {
@@ -833,7 +852,7 @@ export default function StudyPlanner() {
 
                 {/* RIGHT - Side Panel */}
                 <div className="space-y-6">
-                  {/* Upcoming Targets */}
+                  {/* Upcoming Targets — DYNAMIC from analytics */}
                   <motion.div
                     initial={{ opacity: 0, x: 20 }}
                     animate={{ opacity: 1, x: 0 }}
@@ -846,39 +865,41 @@ export default function StudyPlanner() {
                     </div>
 
                     <div className="space-y-3">
-                      <div>
-                        <div className="flex items-center justify-between mb-2">
-                          <p className="text-[12px] text-[#D1D5DB]">Finish Motion in 2D by Friday</p>
-                          <span className="text-[11px] text-[#10B981] font-semibold">80%</span>
-                        </div>
-                        <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
-                          <div className="h-full w-[80%] bg-[#10B981] rounded-full" />
-                        </div>
-                      </div>
-
-                      <div>
-                        <div className="flex items-center justify-between mb-2">
-                          <p className="text-[12px] text-[#D1D5DB]">Complete 5 practice cases</p>
-                          <span className="text-[11px] text-[#F59E0B] font-semibold">60%</span>
-                        </div>
-                        <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
-                          <div className="h-full w-[60%] bg-[#F59E0B] rounded-full" />
-                        </div>
-                      </div>
-
-                      <div>
-                        <div className="flex items-center justify-between mb-2">
-                          <p className="text-[12px] text-[#D1D5DB]">75% medium difficulty accuracy</p>
-                          <span className="text-[11px] text-[#EF4444] font-semibold">45%</span>
-                        </div>
-                        <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
-                          <div className="h-full w-[45%] bg-[#EF4444] rounded-full" />
-                        </div>
-                      </div>
+                      {analyticsData?.weak_topics?.length > 0 ? (
+                        analyticsData.weak_topics.slice(0, 3).map((topic, i) => {
+                          const mastery = Math.round((topic.mastery_probability || 0) * 100);
+                          const color = mastery < 30 ? '#EF4444' : mastery < 60 ? '#F59E0B' : '#10B981';
+                          return (
+                            <div key={i}>
+                              <div className="flex items-center justify-between mb-2">
+                                <p className="text-[12px] text-[#D1D5DB]">
+                                  Improve {topic.topic}{topic.subtopic ? ` — ${topic.subtopic}` : ''}
+                                </p>
+                                <span className="text-[11px] font-semibold" style={{ color }}>{mastery}%</span>
+                              </div>
+                              <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
+                                <div className="h-full rounded-full" style={{ width: `${mastery}%`, backgroundColor: color }} />
+                              </div>
+                            </div>
+                          );
+                        })
+                      ) : (
+                        <>
+                          <div>
+                            <div className="flex items-center justify-between mb-2">
+                              <p className="text-[12px] text-[#D1D5DB]">Complete more duels to unlock targets</p>
+                              <span className="text-[11px] text-[#9CA3AF] font-semibold">—</span>
+                            </div>
+                            <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
+                              <div className="h-full w-0 bg-[#6366F1] rounded-full" />
+                            </div>
+                          </div>
+                        </>
+                      )}
                     </div>
                   </motion.div>
 
-                  {/* Suggested For You */}
+                  {/* Suggested For You — DYNAMIC from recommendations */}
                   <motion.div
                     initial={{ opacity: 0, x: 20 }}
                     animate={{ opacity: 1, x: 0 }}
@@ -891,20 +912,51 @@ export default function StudyPlanner() {
                     </div>
 
                     <div className="space-y-2">
-                      {suggestions.map((s, i) => (
-                        <button key={i} className="w-full p-3 bg-white/5 border border-white/10 rounded-lg hover:border-white/20 transition-colors text-left group">
-                          <div className="flex items-center justify-between">
-                            <p className="text-[12px] text-[#D1D5DB] group-hover:text-[#F3F4F6]">
-                              {s.text}
-                            </p>
-                            <ChevronRight size={14} className="text-[#9CA3AF] group-hover:text-[#F3F4F6]" />
-                          </div>
-                        </button>
-                      ))}
+                      {recommendations.length > 0 ? (
+                        recommendations.slice(0, 5).map((rec, i) => (
+                          <button
+                            key={rec.id || i}
+                            onClick={async () => {
+                              if (rec.id) {
+                                try {
+                                  await completeRecommendation(rec.id);
+                                  setRecommendations(prev => prev.filter(r => r.id !== rec.id));
+                                } catch (err) { console.error('Complete rec failed:', err); }
+                              }
+                            }}
+                            className="w-full p-3 bg-white/5 border border-white/10 rounded-lg hover:border-white/20 transition-colors text-left group"
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex-1">
+                                <p className="text-[12px] font-medium text-[#D1D5DB] group-hover:text-[#F3F4F6]">
+                                  {rec.title}
+                                </p>
+                                {rec.description && (
+                                  <p className="text-[10px] text-[#9CA3AF] mt-0.5">{rec.description}</p>
+                                )}
+                              </div>
+                              <ChevronRight size={14} className="text-[#9CA3AF] group-hover:text-[#F3F4F6] flex-shrink-0" />
+                            </div>
+                          </button>
+                        ))
+                      ) : suggestions.length > 0 ? (
+                        suggestions.map((s, i) => (
+                          <button key={i} className="w-full p-3 bg-white/5 border border-white/10 rounded-lg hover:border-white/20 transition-colors text-left group">
+                            <div className="flex items-center justify-between">
+                              <p className="text-[12px] text-[#D1D5DB] group-hover:text-[#F3F4F6]">
+                                {s.text}
+                              </p>
+                              <ChevronRight size={14} className="text-[#9CA3AF] group-hover:text-[#F3F4F6]" />
+                            </div>
+                          </button>
+                        ))
+                      ) : (
+                        <p className="text-[11px] text-[#9CA3AF] text-center py-3">Play duels to unlock suggestions</p>
+                      )}
                     </div>
                   </motion.div>
 
-                  {/* Study Stats */}
+                  {/* Study Stats — DYNAMIC from analytics */}
                   <motion.div
                     initial={{ opacity: 0, x: 20 }}
                     animate={{ opacity: 1, x: 0 }}
@@ -934,6 +986,30 @@ export default function StudyPlanner() {
                           {plannedHours - completedHours}h
                         </span>
                       </div>
+
+                      {analyticsData && (
+                        <>
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <div className="w-2 h-2 rounded-full bg-[#6366F1]" />
+                              <span className="text-[12px] text-[#9CA3AF]">ELO Rating</span>
+                            </div>
+                            <span className="text-[13px] font-semibold text-[#6366F1]">
+                              {analyticsData.overview?.elo_rating ?? 1200}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <div className="w-2 h-2 rounded-full bg-[#FBBF24]" />
+                              <span className="text-[12px] text-[#9CA3AF]">Overall Accuracy</span>
+                            </div>
+                            <span className="text-[13px] font-semibold text-[#FBBF24]">
+                              {Math.round((analyticsData.overview?.overall_accuracy ?? 0) * 100)}%
+                            </span>
+                          </div>
+                        </>
+                      )}
 
                       <div className="pt-3 border-t border-white/10">
                         <div className="flex items-center justify-between">
