@@ -1,5 +1,6 @@
 # ─── Docker Compose: Clario Analytics Infrastructure ─────────────────────────
-# Spins up TimescaleDB and ClickHouse for the Learning Intelligence System.
+# Spins up TimescaleDB, ClickHouse, Redis, and Ollama for the Learning
+# Intelligence System.
 # Usage: docker-compose -f docker-compose.analytics.yml up -d
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -20,7 +21,7 @@ services:
     volumes:
       - timescale_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U clario -d clario_timescale"]
+      test: [ "CMD-SHELL", "pg_isready -U clario -d clario_timescale" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -31,8 +32,8 @@ services:
     container_name: clario_clickhouse
     restart: unless-stopped
     ports:
-      - "8123:8123"    # HTTP interface
-      - "9000:9000"    # Native TCP interface
+      - "8123:8123" # HTTP interface
+      - "9000:9000" # Native TCP interface
     environment:
       CLICKHOUSE_DB: clario_analytics
       CLICKHOUSE_USER: clario
@@ -44,8 +45,39 @@ services:
         soft: 262144
         hard: 262144
 
+  # ── Redis (Event Streaming bus + Feature Cache) ──────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: clario_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # ── Ollama (Local LLM for NLG formatting) ────────────────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    container_name: clario_ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    # Pull Llama 3.1 8B on first start:
+    #   docker exec clario_ollama ollama pull llama3.1:8b
+
 volumes:
   timescale_data:
     driver: local
   clickhouse_data:
+    driver: local
+  redis_data:
+    driver: local
+  ollama_data:
     driver: local

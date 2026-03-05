@@ -37,8 +37,14 @@ class Config:
     WEAK_TOPIC_ACCURACY_THRESHOLD = float(os.getenv("WEAK_TOPIC_ACCURACY_THRESHOLD", "0.5"))
     STRONG_TOPIC_ACCURACY_THRESHOLD = float(os.getenv("STRONG_TOPIC_ACCURACY_THRESHOLD", "0.8"))
 
-    # ─── ELO ───────────────────────────────────────────────────────────────
+    # ─── ELO / TrueSkill ─────────────────────────────────────────────────────
     ELO_K_FACTOR = int(os.getenv("ELO_K_FACTOR", "32"))
+    TRUESKILL_MU = float(os.getenv("TRUESKILL_MU", "1200.0"))
+    TRUESKILL_SIGMA = float(os.getenv("TRUESKILL_SIGMA", "400.0"))
+
+    # ─── Ollama (NLG Formatting) ──────────────────────────────────────────
+    OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434/api/generate")
+    OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.1:8b")
 
     # ─── API ───────────────────────────────────────────────────────────────
     API_HOST = os.getenv("API_HOST", "0.0.0.0")

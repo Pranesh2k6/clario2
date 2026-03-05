@@ -4,6 +4,7 @@ const { Router } = require('express');
 const { query } = require('../config/db');
 const firebaseAuth = require('../middleware/firebaseAuth');
 const { randomUUID } = require('crypto');
+const { emitQuestionAttempt, emitDuelResult } = require('../services/eventStream');
 
 const router = Router();
 
@@ -592,6 +593,20 @@ router.post('/:id/submit', firebaseAuth, async (req, res) => {
             points,
         });
 
+        // ── Emit to ML Analytics Stream ───────────────────────────────────
+        emitQuestionAttempt({
+            user_id: playerId,
+            question_id: String(questionId),
+            subject: question.subject || null,
+            topic: question.topic || null,
+            subtopic: question.subtopic || null,
+            concept_tag: question.concept_tag || null,
+            is_correct: isCorrect,
+            time_taken_ms: req.body.timeTakenMs || 0,
+            duel_id: duelId,
+            difficulty: question.difficulty || null,
+        }).catch(() => { }); // fire-and-forget
+
         // For AI duels: simulate AI answer
         if (duel.duel_type === 'ai') {
             const aiCorrect = Math.random() > 0.35; // 65% accuracy
@@ -681,6 +696,19 @@ router.post('/:id/submit', firebaseAuth, async (req, res) => {
 
                 req.app.get('io')?.to(duelId).emit('duel:completed', finalResult);
                 duelCompleted = true;
+
+                // ── Emit duel result to ML Analytics Stream ───────────────
+                const loserId = winnerId === d.player_1_id ? d.player_2_id
+                    : winnerId === d.player_2_id ? d.player_1_id
+                        : d.player_2_id; // draw fallback
+                emitDuelResult({
+                    duel_id: duelId,
+                    winner_id: winnerId || d.player_1_id,
+                    loser_id: loserId,
+                    is_draw: !winnerId,
+                    winner_score: d.player_1_score,
+                    loser_score: d.player_2_score,
+                }).catch(() => { }); // fire-and-forget
             }
         }
 
