@@ -1,0 +1,27 @@
+# Prometheus configuration for Clario Analytics monitoring
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # Analytics Engine (FastAPI)
+  - job_name: 'analytics-engine'
+    static_configs:
+      - targets: ['host.docker.internal:8000']
+    metrics_path: '/api/health'
+
+  # Node.js Backend
+  - job_name: 'node-backend'
+    static_configs:
+      - targets: ['host.docker.internal:3000']
+    metrics_path: '/api/health'
+
+  # Redis
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis:6379']
+
+  # MLFlow
+  - job_name: 'mlflow'
+    static_configs:
+      - targets: ['mlflow:5000']
