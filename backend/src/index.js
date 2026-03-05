@@ -11,6 +11,7 @@ const { Server: SocketIOServer } = require('socket.io');
 const authRoutes = require('./routes/auth');
 const duelsRoutes = require('./routes/duels');
 const plannerRoutes = require('./routes/planner');
+const analyticsRoutes = require('./routes/analytics');
 
 // ─── App & HTTP Server Setup ──────────────────────────────────────────────────
 const app = express();
@@ -44,6 +45,7 @@ app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/users', authRoutes);   // GET /api/v1/users/me is on the auth router
 app.use('/api/v1/duels', duelsRoutes);
 app.use('/api/v1/planner', plannerRoutes);
+app.use('/api/v1/analytics', analyticsRoutes);
 
 // ─── WebSocket: Duel Real-time Room Management ────────────────────────────────
 //

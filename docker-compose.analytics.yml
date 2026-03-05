@@ -1,0 +1,51 @@
+# ─── Docker Compose: Clario Analytics Infrastructure ─────────────────────────
+# Spins up TimescaleDB and ClickHouse for the Learning Intelligence System.
+# Usage: docker-compose -f docker-compose.analytics.yml up -d
+# ─────────────────────────────────────────────────────────────────────────────
+
+version: '3.8'
+
+services:
+  # ── TimescaleDB (Time-series analytics) ──────────────────────────────────
+  timescaledb:
+    image: timescale/timescaledb:latest-pg16
+    container_name: clario_timescaledb
+    restart: unless-stopped
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_DB: clario_timescale
+      POSTGRES_USER: clario
+      POSTGRES_PASSWORD: clario_timescale_secret
+    volumes:
+      - timescale_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U clario -d clario_timescale"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── ClickHouse (High-performance analytical queries) ─────────────────────
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.2
+    container_name: clario_clickhouse
+    restart: unless-stopped
+    ports:
+      - "8123:8123"    # HTTP interface
+      - "9000:9000"    # Native TCP interface
+    environment:
+      CLICKHOUSE_DB: clario_analytics
+      CLICKHOUSE_USER: clario
+      CLICKHOUSE_PASSWORD: clario_clickhouse_secret
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+
+volumes:
+  timescale_data:
+    driver: local
+  clickhouse_data:
+    driver: local

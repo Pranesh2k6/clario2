@@ -114,3 +114,9 @@ frontend/dist/
 docs/
 
 dataset/
+
+# Python (analytics-engine)
+analytics-engine/venv/
+__pycache__/
+*.pyc
+analytics-engine/.env
