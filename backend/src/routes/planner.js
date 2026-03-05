@@ -311,7 +311,8 @@ router.get('/suggestions', firebaseAuth, async (req, res) => {
 });
 
 // ─── POST /api/v1/planner/generate ────────────────────────────────────────────
-// AI Smart Plan Generator — creates a week of tasks based on user preferences.
+// ML-Driven Smart Plan Generator — creates personalized tasks using the
+// student's knowledge profile and learning recommendations.
 // Body: { weekday_hours, weekend_hours, focus_mode, timeframe }
 router.post('/generate', firebaseAuth, async (req, res) => {
     try {
@@ -330,61 +331,183 @@ router.post('/generate', firebaseAuth, async (req, res) => {
         let numDays;
         if (timeframe === '1week') numDays = 7;
         else if (timeframe === '2weeks') numDays = 14;
-        else numDays = 30; // 'exam' fallback
+        else numDays = 30;
 
-        // Build schedule: assign tasks per day based on hours budget
-        const subjects = ['Physics', 'Chemistry', 'Math'];
-        const chapters = {
-            Physics: ['Motion in 2D', 'Laws of Motion', 'Work & Energy', 'Circular Motion', 'Gravitation', 'Rotational Motion', 'Oscillations', 'Waves'],
-            Chemistry: ['Chemical Bonding', 'Thermodynamics', 'Equilibrium', 'Electrochemistry', 'Solutions', 'Atomic Structure', 'Organic Chemistry', 'Polymers'],
-            Math: ['Integration', 'Differentiation', 'Matrices', 'Vectors', 'Probability', 'Complex Numbers', 'Coordinate Geometry', 'Conic Sections'],
-        };
+        // ── Fetch intelligence data ───────────────────────────────────────────
+        const [profileResult, recsResult] = await Promise.all([
+            query(
+                `SELECT subject, topic, subtopic, concept_tag,
+                        mastery_probability, total_attempts, behavior_label
+                 FROM student_knowledge_profiles
+                 WHERE user_id = $1
+                 ORDER BY mastery_probability ASC`,
+                [userId]
+            ),
+            query(
+                `SELECT subject, topic, subtopic, concept_tag, title, priority
+                 FROM learning_recommendations
+                 WHERE user_id = $1
+                   AND is_completed = FALSE
+                   AND (expires_at IS NULL OR expires_at > NOW())
+                 ORDER BY priority ASC
+                 LIMIT 15`,
+                [userId]
+            ),
+        ]);
 
+        const profiles = profileResult.rows;
+        const recommendations = recsResult.rows;
+        const hasAnalyticsData = profiles.length > 0;
+
+        // ── Categorize topics by mastery ──────────────────────────────────────
+        const weakTopics = profiles.filter(p => p.mastery_probability < 0.5);
+        const mediumTopics = profiles.filter(p => p.mastery_probability >= 0.5 && p.mastery_probability < 0.8);
+        const strongTopics = profiles.filter(p => p.mastery_probability >= 0.8);
+
+        // ── Mode selection by focus ───────────────────────────────────────────
         const modesByFocus = {
             balanced: ['Learn', 'Practice', 'Quiz'],
             revision: ['Revision', 'Practice'],
             exam: ['Quiz', 'Practice'],
             weak: ['Learn', 'Practice', 'Quiz'],
         };
-
         const modes = modesByFocus[focus_mode] || modesByFocus.balanced;
+
+        // ── Fallback chapter pool (for new users with no data) ────────────────
+        const fallbackChapters = {
+            Physics: ['Motion in 2D', 'Laws of Motion', 'Work & Energy', 'Circular Motion', 'Gravitation', 'Rotational Motion', 'Oscillations', 'Waves'],
+            Chemistry: ['Chemical Bonding', 'Thermodynamics', 'Equilibrium', 'Electrochemistry', 'Solutions', 'Atomic Structure', 'Organic Chemistry', 'Polymers'],
+            Math: ['Integration', 'Differentiation', 'Matrices', 'Vectors', 'Probability', 'Complex Numbers', 'Coordinate Geometry', 'Conic Sections'],
+        };
+        const subjects = ['Physics', 'Chemistry', 'Math'];
+
+        // ── Smart mode for a topic based on mastery & behavior ────────────────
+        function pickMode(profile) {
+            if (!profile) return modes[Math.floor(Math.random() * modes.length)];
+            if (profile.mastery_probability < 0.3) return 'Learn';
+            if (profile.mastery_probability < 0.5) return focus_mode === 'exam' ? 'Quiz' : 'Practice';
+            if (profile.behavior_label === 'guessing') return 'Learn';
+            return modes[Math.floor(Math.random() * modes.length)];
+        }
+
+        // ── Pick a topic from a pool (round-robin with tracker) ───────────────
+        const usedTracker = {};
+        function pickFromPool(pool) {
+            if (pool.length === 0) return null;
+            const key = pool.map(p => p.topic).join(',');
+            if (!usedTracker[key]) usedTracker[key] = 0;
+            const idx = usedTracker[key] % pool.length;
+            usedTracker[key]++;
+            return pool[idx];
+        }
+
+        // ── Generate tasks ────────────────────────────────────────────────────
         const generatedTasks = [];
-        let chapterIdx = { Physics: 0, Chemistry: 0, Math: 0 };
+        let fallbackIdx = { Physics: 0, Chemistry: 0, Math: 0 };
 
         for (let d = 0; d < numDays; d++) {
             const taskDate = new Date(today);
             taskDate.setDate(today.getDate() + d);
-            const dayOfWeek = taskDate.getDay(); // 0=Sun, 6=Sat
+            const dayOfWeek = taskDate.getDay();
             const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
             const budgetHours = isWeekend ? weekend_hours : weekday_hours;
             const dateStr = taskDate.toISOString().split('T')[0];
 
-            // Split budget across subjects (~equal)
             let minutesLeft = budgetHours * 60;
-            let subjectQueue = [...subjects];
 
-            while (minutesLeft >= 30 && subjectQueue.length > 0) {
-                const subj = subjectQueue.shift();
-                const chapterList = chapters[subj];
-                const chapter = chapterList[chapterIdx[subj] % chapterList.length];
-                const mode = modes[Math.floor(Math.random() * modes.length)];
-                const taskMinutes = Math.min(minutesLeft, 30 + Math.floor(Math.random() * 31)); // 30-60 min
+            if (!hasAnalyticsData) {
+                // ── FALLBACK: broad-coverage for new users ────────────────────
+                let subjectQueue = [...subjects];
+                while (minutesLeft >= 30 && subjectQueue.length > 0) {
+                    const subj = subjectQueue.shift();
+                    const chapterList = fallbackChapters[subj];
+                    const chapter = chapterList[fallbackIdx[subj] % chapterList.length];
+                    const mode = modes[Math.floor(Math.random() * modes.length)];
+                    const taskMinutes = Math.min(minutesLeft, 30 + Math.floor(Math.random() * 31));
 
+                    generatedTasks.push({ userId, subject: subj, chapter, mode, estimated_minutes: taskMinutes, scheduled_date: dateStr });
+                    minutesLeft -= taskMinutes;
+                    fallbackIdx[subj]++;
+                }
+                continue;
+            }
+
+            // ── INTELLIGENT: allocate time by priority ────────────────────────
+            // Day 0-1: inject recommendation-based tasks first
+            if (d < 2 && recommendations.length > 0) {
+                const dayRecs = recommendations.slice(d * 2, d * 2 + 2);
+                for (const rec of dayRecs) {
+                    if (minutesLeft < 30) break;
+                    const profile = profiles.find(p => p.topic === rec.topic && p.subject === rec.subject);
+                    const taskMinutes = Math.min(minutesLeft, 45);
+                    generatedTasks.push({
+                        userId,
+                        subject: rec.subject || 'Physics',
+                        chapter: rec.topic || rec.title,
+                        mode: pickMode(profile),
+                        estimated_minutes: taskMinutes,
+                        scheduled_date: dateStr,
+                    });
+                    minutesLeft -= taskMinutes;
+                }
+            }
+
+            // ~60% of remaining budget → weak topics
+            const weakBudget = Math.round(minutesLeft * 0.6);
+            let weakLeft = weakBudget;
+            while (weakLeft >= 30 && weakTopics.length > 0) {
+                const topic = pickFromPool(weakTopics);
+                if (!topic) break;
+                const taskMinutes = Math.min(weakLeft, 30 + Math.floor(Math.random() * 16)); // 30-45 min
                 generatedTasks.push({
                     userId,
-                    subject: subj,
-                    chapter,
-                    mode,
+                    subject: topic.subject,
+                    chapter: topic.topic,
+                    mode: pickMode(topic),
                     estimated_minutes: taskMinutes,
                     scheduled_date: dateStr,
                 });
-
+                weakLeft -= taskMinutes;
                 minutesLeft -= taskMinutes;
-                chapterIdx[subj]++;
+            }
+
+            // ~20% → medium topics (consolidation)
+            const medBudget = Math.round(minutesLeft * 0.5); // half of what's left
+            let medLeft = medBudget;
+            while (medLeft >= 30 && mediumTopics.length > 0) {
+                const topic = pickFromPool(mediumTopics);
+                if (!topic) break;
+                const taskMinutes = Math.min(medLeft, 30 + Math.floor(Math.random() * 16));
+                generatedTasks.push({
+                    userId,
+                    subject: topic.subject,
+                    chapter: topic.topic,
+                    mode: pickMode(topic),
+                    estimated_minutes: taskMinutes,
+                    scheduled_date: dateStr,
+                });
+                medLeft -= taskMinutes;
+                minutesLeft -= taskMinutes;
+            }
+
+            // Remaining → strong topics (spaced repetition / variety)
+            while (minutesLeft >= 30 && strongTopics.length > 0) {
+                const topic = pickFromPool(strongTopics);
+                if (!topic) break;
+                const taskMinutes = Math.min(minutesLeft, 30);
+                generatedTasks.push({
+                    userId,
+                    subject: topic.subject,
+                    chapter: topic.topic,
+                    mode: 'Revision',
+                    estimated_minutes: taskMinutes,
+                    scheduled_date: dateStr,
+                });
+                minutesLeft -= taskMinutes;
             }
         }
 
-        // Bulk insert
+        // ── Bulk insert ───────────────────────────────────────────────────────
         if (generatedTasks.length > 0) {
             const values = generatedTasks.map((t, i) => {
                 const offset = i * 6;
@@ -403,8 +526,9 @@ router.post('/generate', firebaseAuth, async (req, res) => {
         }
 
         return res.status(201).json({
-            message: `Generated ${generatedTasks.length} tasks for ${numDays} days`,
+            message: `Generated ${generatedTasks.length} personalized tasks for ${numDays} days`,
             count: generatedTasks.length,
+            source: hasAnalyticsData ? 'intelligence_profile' : 'broad_coverage',
         });
     } catch (err) {
         console.error('[Planner POST /generate] error:', err.message);

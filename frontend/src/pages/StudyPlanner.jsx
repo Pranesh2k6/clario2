@@ -402,7 +402,7 @@ export default function StudyPlanner() {
                 >
                   <div className="flex flex-col items-center gap-4">
                     <Loader2 size={40} className="text-[#6366F1] animate-spin" />
-                    <p className="text-[14px] text-[#F3F4F6]">Optimizing your schedule…</p>
+                    <p className="text-[14px] text-[#F3F4F6]">Analyzing your intelligence profile…</p>
                   </div>
                 </motion.div>
               )}
