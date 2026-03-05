@@ -6,6 +6,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { FlippableQuestionCard } from '../components/FlippableQuestionCard';
 import { PerformanceStatsGraph } from '../components/PerformanceStatsGraph';
 import { getWeakTopics, getDashboardAnalytics } from '../api/analytics';
+import client from '../api/client';
 
 // Mock round data with full questions
 const roundData = [
@@ -91,16 +92,22 @@ export default function DuelResult() {
   // ── Dynamic analytics state ─────────────────────────────────────────────────
   const [weakTopicsData, setWeakTopicsData] = useState([]);
   const [dashboardData, setDashboardData] = useState(null);
+  const [nlgInsights, setNlgInsights] = useState([]);
+  const [skillRating, setSkillRating] = useState(null);
 
   useEffect(() => {
     const fetchAnalytics = async () => {
       try {
-        const [weakRes, dashRes] = await Promise.allSettled([
+        const [weakRes, dashRes, nlgRes, ratingRes] = await Promise.allSettled([
           getWeakTopics(),
           getDashboardAnalytics(),
+          client.get('/analytics/insights?context=duel_result'),
+          client.get('/analytics/rating'),
         ]);
         if (weakRes.status === 'fulfilled') setWeakTopicsData(weakRes.value.data || []);
         if (dashRes.status === 'fulfilled') setDashboardData(dashRes.value.data || null);
+        if (nlgRes.status === 'fulfilled') setNlgInsights(nlgRes.value.data?.insights || []);
+        if (ratingRes.status === 'fulfilled') setSkillRating(ratingRes.value.data || null);
       } catch (err) {
         console.error('[DuelResult] Analytics fetch failed:', err);
       }
@@ -400,6 +407,43 @@ export default function DuelResult() {
                 ))}
               </ul>
             </motion.div>
+
+            {/* NLG Post-Match Analysis + TrueSkill */}
+            {(nlgInsights.length > 0 || skillRating) && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.88 }}
+                className="mb-6 p-5 bg-gradient-to-br from-[rgba(124,58,237,0.08)] to-[rgba(99,102,241,0.05)] border border-[#7C3AED]/20 rounded-2xl"
+              >
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-[13px] font-semibold text-[#F3F4F6]">🧠 AI Analysis</h3>
+                  {skillRating && (
+                    <div className="flex items-center gap-2">
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider
+                        ${skillRating.rating >= 1800 ? 'bg-[#FFD700]/20 text-[#FFD700] border border-[#FFD700]/30'
+                          : skillRating.rating >= 1500 ? 'bg-[#C0C0C0]/20 text-[#C0C0C0] border border-[#C0C0C0]/30'
+                            : skillRating.rating >= 1200 ? 'bg-[#CD7F32]/20 text-[#CD7F32] border border-[#CD7F32]/30'
+                              : 'bg-white/10 text-[#9CA3AF] border border-white/20'}`}
+                      >
+                        {skillRating.rating >= 1800 ? '🏆 Gold' : skillRating.rating >= 1500 ? '🥈 Silver' : skillRating.rating >= 1200 ? '🥉 Bronze' : '⚔️ Unranked'}
+                      </span>
+                      <span className="text-[11px] text-[#9CA3AF]">{skillRating.rating} SR</span>
+                    </div>
+                  )}
+                </div>
+                {nlgInsights.length > 0 && (
+                  <ul className="space-y-2">
+                    {nlgInsights.slice(0, 3).map((insight, i) => (
+                      <li key={i} className="flex items-start gap-2 text-[12px] text-[#D1D5DB]">
+                        <div className="w-1.5 h-1.5 rounded-full bg-[#7C3AED] mt-1.5 flex-shrink-0 shadow-[0_0_4px_rgba(124,58,237,0.8)]" />
+                        <span>{insight}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </motion.div>
+            )}
 
             {/* Action Buttons */}
             <motion.div

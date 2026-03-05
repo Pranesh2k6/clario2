@@ -899,7 +899,7 @@ export default function StudyPlanner() {
                     </div>
                   </motion.div>
 
-                  {/* Suggested For You — DYNAMIC from recommendations */}
+                  {/* Suggested For You — ML-driven MAB Recommendations */}
                   <motion.div
                     initial={{ opacity: 0, x: 20 }}
                     animate={{ opacity: 1, x: 0 }}
@@ -908,37 +908,62 @@ export default function StudyPlanner() {
                   >
                     <div className="flex items-center gap-2 mb-4">
                       <Sparkles size={18} className="text-[#FBBF24]" />
-                      <h3 className="text-[14px] font-bold text-[#F3F4F6]">Suggested For You</h3>
+                      <h3 className="text-[14px] font-bold text-[#F3F4F6]">AI Suggestions</h3>
+                      <span className="ml-auto text-[10px] text-[#9CA3AF] bg-white/5 px-2 py-0.5 rounded-full">MAB Engine</span>
                     </div>
 
                     <div className="space-y-2">
                       {recommendations.length > 0 ? (
-                        recommendations.slice(0, 5).map((rec, i) => (
-                          <button
-                            key={rec.id || i}
-                            onClick={async () => {
-                              if (rec.id) {
-                                try {
-                                  await completeRecommendation(rec.id);
-                                  setRecommendations(prev => prev.filter(r => r.id !== rec.id));
-                                } catch (err) { console.error('Complete rec failed:', err); }
-                              }
-                            }}
-                            className="w-full p-3 bg-white/5 border border-white/10 rounded-lg hover:border-white/20 transition-colors text-left group"
-                          >
-                            <div className="flex items-center justify-between">
-                              <div className="flex-1">
-                                <p className="text-[12px] font-medium text-[#D1D5DB] group-hover:text-[#F3F4F6]">
-                                  {rec.title}
-                                </p>
-                                {rec.description && (
-                                  <p className="text-[10px] text-[#9CA3AF] mt-0.5">{rec.description}</p>
-                                )}
+                        recommendations.slice(0, 5).map((rec, i) => {
+                          const priorityConfig = {
+                            1: { label: 'Critical', bg: 'bg-[#EF4444]/20', text: 'text-[#F87171]', border: 'border-[#EF4444]/30' },
+                            2: { label: 'Focus', bg: 'bg-[#F59E0B]/20', text: 'text-[#FBBF24]', border: 'border-[#F59E0B]/30' },
+                            3: { label: 'Optional', bg: 'bg-[#10B981]/20', text: 'text-[#34D399]', border: 'border-[#10B981]/30' },
+                          };
+                          const pCfg = priorityConfig[rec.priority] || priorityConfig[3];
+                          const typeIcons = { learn: '📖', practice: '✏️', quiz: '🎯', revision: '🔄' };
+                          const typeIcon = typeIcons[(rec.recommendation_type || '').toLowerCase()] || '📚';
+
+                          return (
+                            <button
+                              key={rec.id || i}
+                              onClick={async () => {
+                                if (rec.id) {
+                                  try {
+                                    await completeRecommendation(rec.id);
+                                    setRecommendations(prev => prev.filter(r => r.id !== rec.id));
+                                  } catch (err) { console.error('Complete rec failed:', err); }
+                                }
+                                // Navigate based on recommendation type
+                                const type = (rec.recommendation_type || '').toLowerCase();
+                                if (type === 'learn') navigate('/galaxy');
+                                else if (type === 'practice' || type === 'quiz') navigate('/galaxy');
+                                else navigate('/galaxy');
+                              }}
+                              className={`w-full p-3 bg-white/5 rounded-xl hover:bg-white/8 transition-all text-left group ${rec.priority === 1 ? 'border border-[#EF4444]/20' : 'border border-white/10 hover:border-white/20'}`}
+                            >
+                              <div className="flex items-start gap-3">
+                                <span className="text-[16px] mt-0.5">{typeIcon}</span>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <p className="text-[12px] font-semibold text-[#D1D5DB] group-hover:text-[#F3F4F6] truncate">
+                                      {rec.title}
+                                    </p>
+                                    <span className={`flex-shrink-0 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider ${pCfg.bg} ${pCfg.text} border ${pCfg.border}`}>
+                                      {pCfg.label}
+                                    </span>
+                                  </div>
+                                  {rec.description && (
+                                    <p className="text-[10px] text-[#9CA3AF] leading-relaxed line-clamp-2">{rec.description}</p>
+                                  )}
+                                  <span className="inline-block mt-1.5 text-[9px] text-[#7C3AED] font-medium uppercase tracking-wider">
+                                    {rec.recommendation_type || 'learn'} →
+                                  </span>
+                                </div>
                               </div>
-                              <ChevronRight size={14} className="text-[#9CA3AF] group-hover:text-[#F3F4F6] flex-shrink-0" />
-                            </div>
-                          </button>
-                        ))
+                            </button>
+                          );
+                        })
                       ) : suggestions.length > 0 ? (
                         suggestions.map((s, i) => (
                           <button key={i} className="w-full p-3 bg-white/5 border border-white/10 rounded-lg hover:border-white/20 transition-colors text-left group">
@@ -951,7 +976,7 @@ export default function StudyPlanner() {
                           </button>
                         ))
                       ) : (
-                        <p className="text-[11px] text-[#9CA3AF] text-center py-3">Play duels to unlock suggestions</p>
+                        <p className="text-[11px] text-[#9CA3AF] text-center py-3">Play duels to unlock AI suggestions</p>
                       )}
                     </div>
                   </motion.div>
