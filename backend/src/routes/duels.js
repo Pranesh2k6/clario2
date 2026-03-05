@@ -410,7 +410,7 @@ router.get('/:id', firebaseAuth, async (req, res) => {
             // Convert string IDs to integers for the integer PK column
             const intIds = qIds.map(id => parseInt(id, 10)).filter(n => !isNaN(n));
             const qRes = await query(
-                `SELECT id, question_text, question_type, options, elo FROM duel_questions_pool WHERE id = ANY($1)`,
+                `SELECT id, question_text, question_type, options, elo, difficulty FROM duel_questions_pool WHERE id = ANY($1)`,
                 [intIds]
             );
             // Maintain the original order and map to frontend-expected format
@@ -424,6 +424,7 @@ router.get('/:id', firebaseAuth, async (req, res) => {
                         options: row.options || null,  // JSONB → array or null
                         image_url: null,
                     },
+                    difficulty: row.difficulty || 'Medium',
                     difficulty_weight: row.elo ? row.elo / 1000 : 1,
                 };
             }).filter(Boolean);
@@ -551,7 +552,7 @@ router.post('/:id/submit', firebaseAuth, async (req, res) => {
 
         // Check correct answer from duel_questions_pool
         const qRes = await query(
-            'SELECT question_type, options, correct_answer, correct_option_index FROM duel_questions_pool WHERE id = $1',
+            'SELECT question_type, options, correct_answer, correct_option_index, difficulty, subject, topics FROM duel_questions_pool WHERE id = $1',
             [parseInt(questionId, 10)]
         );
         if (qRes.rows.length === 0) return res.status(404).json({ error: 'Question not found.' });
@@ -594,13 +595,14 @@ router.post('/:id/submit', firebaseAuth, async (req, res) => {
         });
 
         // ── Emit to ML Analytics Stream ───────────────────────────────────
+        const topicsArr = question.topics || [];
         emitQuestionAttempt({
             user_id: playerId,
             question_id: String(questionId),
             subject: question.subject || null,
-            topic: question.topic || null,
-            subtopic: question.subtopic || null,
-            concept_tag: question.concept_tag || null,
+            topic: topicsArr[0] || null,
+            subtopic: topicsArr[1] || null,
+            concept_tag: null,
             is_correct: isCorrect,
             time_taken_ms: req.body.timeTakenMs || 0,
             duel_id: duelId,

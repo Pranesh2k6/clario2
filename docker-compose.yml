@@ -1,0 +1,43 @@
+# ─── Docker Compose: Clario Frontend + Backend ───────────────────────────────
+# Containerises the Vite frontend and Express backend so they stay alive.
+# Usage:  docker-compose up -d --build
+#
+# The analytics stack lives in docker-compose.analytics.yml and is started
+# separately:  docker-compose -f docker-compose.analytics.yml up -d
+# ─────────────────────────────────────────────────────────────────────────────
+
+version: '3.8'
+
+services:
+  # ── Node.js Express Backend ──────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: clario_backend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./backend/src:/app/src # Hot-reload source changes
+      - ./backend/.env:/app/.env:ro # Env file (read-only mount)
+      - ./backend/firebase-service-account.json:/app/firebase-service-account.json:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway" # Access host Postgres
+    environment:
+      - NODE_ENV=development
+
+  # ── Vite React Frontend ──────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: clario_frontend
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend/src:/app/src # Hot-reload source changes
+      - ./frontend/public:/app/public
+    depends_on:
+      - backend

@@ -9,7 +9,7 @@ import mlflow
 from .config import config
 
 
-MLFLOW_URI = "http://localhost:5000"
+MLFLOW_URI = "http://localhost:5001"
 EXPERIMENT_NAME = "clario-analytics"
 
 

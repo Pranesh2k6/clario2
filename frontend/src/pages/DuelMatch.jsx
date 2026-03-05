@@ -206,6 +206,7 @@ export default function DuelMatch() {
         correctAnswerText: correctAnswerText || null,
         userAnswer: selectedAnswer,
         imageUrl: currentQuestion.content?.image_url,
+        difficulty: currentQuestion.difficulty || 'Medium',
       }]);
 
       // Show result overlay
@@ -249,6 +250,7 @@ export default function DuelMatch() {
                   correctAnswerText: correctAnswerText || null,
                   userAnswer: selectedAnswer,
                   imageUrl: currentQuestion.content?.image_url,
+                  difficulty: currentQuestion.difficulty || 'Medium',
                 }],
               },
             });
