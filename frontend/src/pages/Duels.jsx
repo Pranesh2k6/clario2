@@ -7,7 +7,7 @@ import { useAuth } from '../context/AuthContext';
 import client from '../api/client';
 import { connectSocket, onMatchFound } from '../api/socket';
 import { ProfileDropdown } from '../components/ProfileDropdown';
-const clarioLogo = '';
+const clarioLogo = '/clario-logo.png';
 
 const navItems = [
   { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },

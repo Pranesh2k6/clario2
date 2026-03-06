@@ -4,7 +4,7 @@ import { useNavigate, useParams } from 'react-router';
 import { motion } from 'motion/react';
 import { SpaceBackground } from '../components/SpaceBackground';
 import { LayoutDashboard, Map, FileText, Swords, Calendar, BarChart3, Settings, Flame, Zap, ArrowLeft, ChevronRight, Clock, BookmarkCheck, ChevronLeft, Flag, CheckCircle } from 'lucide-react';
-const clarioLogo = '';
+const clarioLogo = '/clario-logo.png';
 
 const navItems = [
   { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },
@@ -127,9 +127,9 @@ export default function MockTest() {
         <aside className="hidden lg:flex flex-col w-[260px] bg-[rgba(8,5,24,0.85)] backdrop-blur-xl border-r border-white/8">
           {/* Logo */}
           <div className="p-6 border-b border-white/8">
-            <img 
-              src={clarioLogo} 
-              alt="Clario" 
+            <img
+              src={clarioLogo}
+              alt="Clario"
               className="h-[64px] w-auto"
             />
           </div>
@@ -150,8 +150,8 @@ export default function MockTest() {
                     w-full flex items-center gap-3 px-4 py-3 rounded-xl
                     text-[14px] font-medium transition-all duration-200
                     relative
-                    ${isActive 
-                      ? 'bg-white/8 text-[#F3F4F6]' 
+                    ${isActive
+                      ? 'bg-white/8 text-[#F3F4F6]'
                       : isImplemented
                         ? 'text-[#9CA3AF] hover:bg-white/5 hover:text-[#D1D5DB] cursor-pointer'
                         : 'text-[#9CA3AF]/40 cursor-not-allowed'
@@ -199,21 +199,21 @@ export default function MockTest() {
             {/* Header Section */}
             <div className="px-6 lg:px-8 pt-6 pb-4 border-b border-white/8 bg-[rgba(12,8,36,0.3)] backdrop-blur-sm">
               <div className="flex items-center gap-2 text-[13px] text-[#9CA3AF] mb-3">
-                <button 
+                <button
                   onClick={() => navigate('/galaxy')}
                   className="hover:text-[#F3F4F6] transition-colors"
                 >
                   Galaxy
                 </button>
                 <ChevronRight size={14} />
-                <button 
+                <button
                   onClick={() => navigate(`/planet/${subjectId}`)}
                   className="hover:text-[#F3F4F6] transition-colors"
                 >
                   Physics
                 </button>
                 <ChevronRight size={14} />
-                <button 
+                <button
                   onClick={() => navigate(`/planet/${subjectId}/chapter/${chapterId}`)}
                   className="hover:text-[#F3F4F6] transition-colors"
                 >

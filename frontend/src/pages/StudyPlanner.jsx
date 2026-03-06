@@ -28,7 +28,7 @@ import {
 } from '../api/planner';
 import { getDashboardAnalytics, getRecommendations, completeRecommendation } from '../api/analytics';
 
-const clarioLogo = '';
+const clarioLogo = '/clario-logo.png';
 const SUBJECT_ICONS = { Physics: '🌌', Chemistry: '⚗️', Math: '📐' };
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];

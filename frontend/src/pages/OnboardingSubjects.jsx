@@ -5,7 +5,7 @@ import { SpaceBackground } from '../components/SpaceBackground';
 import { ProgressIndicator } from '../components/ProgressIndicator';
 import { AuthButton } from '../components/AuthButton';
 import { Atom, FlaskConical, Calculator, Dna, Code } from 'lucide-react';
-const clarioLogo = '';
+const clarioLogo = '/clario-logo.png';
 
 const subjects = [
   { id: 'physics', name: 'Physics', icon: Atom },
@@ -48,9 +48,9 @@ export default function OnboardingSubjects() {
           <div className="relative bg-[rgba(12,8,36,0.7)] backdrop-blur-xl rounded-3xl border border-white/12 shadow-[0_8px_32px_rgba(0,0,0,0.4)] p-8 sm:p-12">
             {/* Logo */}
             <div className="flex items-center mb-8">
-              <img 
-                src={clarioLogo} 
-                alt="Clario" 
+              <img
+                src={clarioLogo}
+                alt="Clario"
                 className="h-[56px] w-auto"
               />
             </div>
@@ -84,8 +84,8 @@ export default function OnboardingSubjects() {
                       relative p-6 rounded-2xl
                       bg-white/5 backdrop-blur-sm
                       border transition-all duration-300
-                      ${isSelected 
-                        ? 'border-[#7C3AED] bg-[#7C3AED]/10 shadow-[0_0_20px_rgba(124,58,237,0.25)]' 
+                      ${isSelected
+                        ? 'border-[#7C3AED] bg-[#7C3AED]/10 shadow-[0_0_20px_rgba(124,58,237,0.25)]'
                         : 'border-white/12 hover:border-white/20'
                       }
                     `}
@@ -95,8 +95,8 @@ export default function OnboardingSubjects() {
                         p-3 rounded-xl transition-colors duration-300
                         ${isSelected ? 'bg-[#7C3AED]/20' : 'bg-white/5'}
                       `}>
-                        <Icon 
-                          size={28} 
+                        <Icon
+                          size={28}
                           className={`
                             transition-colors duration-300
                             ${isSelected ? 'text-[#A78BFA]' : 'text-[#9CA3AF]'}
@@ -119,7 +119,7 @@ export default function OnboardingSubjects() {
                         className="absolute top-3 right-3 w-5 h-5 bg-[#7C3AED] rounded-full flex items-center justify-center"
                       >
                         <svg width="12" height="10" viewBox="0 0 12 10" fill="none">
-                          <path d="M1 5L4.5 8.5L11 1.5" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                          <path d="M1 5L4.5 8.5L11 1.5" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                         </svg>
                       </motion.div>
                     )}
@@ -129,8 +129,8 @@ export default function OnboardingSubjects() {
             </div>
 
             {/* Continue Button */}
-            <AuthButton 
-              onClick={handleContinue} 
+            <AuthButton
+              onClick={handleContinue}
               disabled={selectedSubjects.length === 0}
             >
               Continue

@@ -5,7 +5,7 @@ import { SpaceBackground } from '../components/SpaceBackground';
 import { ProgressIndicator } from '../components/ProgressIndicator';
 import { AuthButton } from '../components/AuthButton';
 import { Trophy, BookOpen } from 'lucide-react';
-const clarioLogo = '';
+const clarioLogo = '/clario-logo.png';
 
 const goals = [
   {
@@ -48,9 +48,9 @@ export default function OnboardingGoal() {
           <div className="relative bg-[rgba(12,8,36,0.7)] backdrop-blur-xl rounded-3xl border border-white/12 shadow-[0_8px_32px_rgba(0,0,0,0.4)] p-8 sm:p-12">
             {/* Logo */}
             <div className="flex items-center mb-8">
-              <img 
-                src={clarioLogo} 
-                alt="Clario" 
+              <img
+                src={clarioLogo}
+                alt="Clario"
                 className="h-[56px] w-auto"
               />
             </div>
@@ -84,8 +84,8 @@ export default function OnboardingGoal() {
                       relative p-8 rounded-2xl
                       bg-white/5 backdrop-blur-sm
                       border transition-all duration-300
-                      ${isSelected 
-                        ? 'border-[#7C3AED] bg-[#7C3AED]/10 shadow-[0_0_20px_rgba(124,58,237,0.25)]' 
+                      ${isSelected
+                        ? 'border-[#7C3AED] bg-[#7C3AED]/10 shadow-[0_0_20px_rgba(124,58,237,0.25)]'
                         : 'border-white/12 hover:border-white/20'
                       }
                     `}
@@ -96,8 +96,8 @@ export default function OnboardingGoal() {
                         p-4 rounded-xl transition-colors duration-300
                         ${isSelected ? 'bg-[#7C3AED]/20' : 'bg-white/5'}
                       `}>
-                        <Icon 
-                          size={32} 
+                        <Icon
+                          size={32}
                           className={`
                             transition-colors duration-300
                             ${isSelected ? 'text-[#A78BFA]' : 'text-[#9CA3AF]'}
@@ -127,7 +127,7 @@ export default function OnboardingGoal() {
                         className="absolute top-4 right-4 w-6 h-6 bg-[#7C3AED] rounded-full flex items-center justify-center"
                       >
                         <svg width="14" height="11" viewBox="0 0 14 11" fill="none">
-                          <path d="M1 5.5L5 9.5L13 1.5" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                          <path d="M1 5.5L5 9.5L13 1.5" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                         </svg>
                       </motion.div>
                     )}
@@ -137,8 +137,8 @@ export default function OnboardingGoal() {
             </div>
 
             {/* Finish Button */}
-            <AuthButton 
-              onClick={handleFinish} 
+            <AuthButton
+              onClick={handleFinish}
               disabled={!selectedGoal}
             >
               Enter My Galaxy

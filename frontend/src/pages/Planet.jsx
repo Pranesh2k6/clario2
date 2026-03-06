@@ -4,7 +4,7 @@ import { motion } from 'motion/react';
 import { SpaceBackground } from '../components/SpaceBackground';
 import { IllustratedPlanet } from '../components/IllustratedPlanet';
 import { LayoutDashboard, Map, FileText, Swords, Calendar, BarChart3, Settings, Flame, Zap, ArrowLeft, ChevronRight, Lock } from 'lucide-react';
-const clarioLogo = '';
+const clarioLogo = '/clario-logo.png';
 
 const navItems = [
   { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },
@@ -67,9 +67,9 @@ const subjectData = {
 export default function Planet() {
   const navigate = useNavigate();
   const { subjectId } = useParams();
-  
+
   const subject = subjectData[subjectId || 'physics'] || subjectData['physics'];
-  
+
   // Handle case where subject doesn't exist
   if (!subject) {
     return (
@@ -87,7 +87,7 @@ export default function Planet() {
       </div>
     );
   }
-  
+
   const chaptersLeft = subject.totalChapters - subject.chaptersCompleted;
 
   const handleChapterClick = (chapterId, status) => {
@@ -116,9 +116,9 @@ export default function Planet() {
         <aside className="hidden lg:flex flex-col w-[260px] bg-[rgba(8,5,24,0.85)] backdrop-blur-xl border-r border-white/8">
           {/* Logo */}
           <div className="p-6 border-b border-white/8">
-            <img 
-              src={clarioLogo} 
-              alt="Clario" 
+            <img
+              src={clarioLogo}
+              alt="Clario"
               className="h-[64px] w-auto"
             />
           </div>
@@ -139,8 +139,8 @@ export default function Planet() {
                     w-full flex items-center gap-3 px-4 py-3 rounded-xl
                     text-[14px] font-medium transition-all duration-200
                     relative
-                    ${isActive 
-                      ? 'bg-white/8 text-[#F3F4F6]' 
+                    ${isActive
+                      ? 'bg-white/8 text-[#F3F4F6]'
                       : isImplemented
                         ? 'text-[#9CA3AF] hover:bg-white/5 hover:text-[#D1D5DB] cursor-pointer'
                         : 'text-[#9CA3AF]/40 cursor-not-allowed'
@@ -193,7 +193,7 @@ export default function Planet() {
           <div className="flex-1 overflow-y-auto p-6 lg:p-8">
             {/* Breadcrumb */}
             <div className="flex items-center gap-2 text-[13px] text-[#9CA3AF] mb-8">
-              <button 
+              <button
                 onClick={() => navigate('/galaxy')}
                 className="hover:text-[#F3F4F6] transition-colors"
               >
@@ -213,7 +213,7 @@ export default function Planet() {
               <div className="flex items-center justify-between">
                 {/* Left - Subject Info */}
                 <div className="flex items-center gap-4">
-                  <div 
+                  <div
                     className="w-12 h-12 rounded-xl flex items-center justify-center text-[24px]"
                     style={{
                       background: `linear-gradient(135deg, ${subject.color}40, ${subject.color}20)`,
@@ -238,8 +238,8 @@ export default function Planet() {
               {/* Center - Large Subject Planet */}
               <motion.div
                 initial={{ opacity: 0, scale: 0.8 }}
-                animate={{ 
-                  opacity: 1, 
+                animate={{
+                  opacity: 1,
                   scale: 1,
                   y: [0, -8, 0],
                 }}
@@ -284,16 +284,16 @@ export default function Planet() {
                 const isLocked = chapter.status === 'locked';
                 const isCompleted = chapter.status === 'completed';
                 const isRecommended = chapter.status === 'recommended';
-                
+
                 // Two orbital rings: inner (first 3) and outer (rest)
                 const isInnerOrbit = index < 3;
                 const orbitRadius = isInnerOrbit ? 200 : 280;
                 const adjustedIndex = isInnerOrbit ? index : index - 3;
                 const totalInOrbit = isInnerOrbit ? 3 : subject.chapters.length - 3;
-                
+
                 const position = getOrbitPosition(adjustedIndex, totalInOrbit, orbitRadius);
                 const chapterSize = 72;
-                
+
                 // Determine glow intensity
                 const glowIntensity = isCompleted ? 0.6 : isRecommended ? 0.8 : 0.4;
 
@@ -301,8 +301,8 @@ export default function Planet() {
                   <motion.div
                     key={chapter.id}
                     initial={{ opacity: 0, scale: 0.5 }}
-                    animate={{ 
-                      opacity: isLocked ? 0.4 : 1, 
+                    animate={{
+                      opacity: isLocked ? 0.4 : 1,
                       scale: 1,
                       y: [0, -10, 0],
                     }}
@@ -338,7 +338,7 @@ export default function Planet() {
                           glowColor={isCompleted ? 'rgba(16, 185, 129, 0.6)' : isRecommended ? 'rgba(124, 58, 237, 0.8)' : `${subject.color}66`}
                           animate={!isLocked}
                         />
-                        
+
                         {/* Locked overlay */}
                         {isLocked && (
                           <div className="absolute inset-0 flex items-center justify-center bg-black/40 rounded-full backdrop-blur-sm">
@@ -400,7 +400,7 @@ export default function Planet() {
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                 <div className="relative">
                   {/* Inner orbit ring */}
-                  <div 
+                  <div
                     className="absolute rounded-full border border-white/5"
                     style={{
                       width: '400px',
@@ -411,7 +411,7 @@ export default function Planet() {
                     }}
                   />
                   {/* Outer orbit ring */}
-                  <div 
+                  <div
                     className="absolute rounded-full border border-white/5"
                     style={{
                       width: '560px',
