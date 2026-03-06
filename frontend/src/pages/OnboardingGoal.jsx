@@ -51,7 +51,7 @@ export default function OnboardingGoal() {
               <img
                 src={clarioLogo}
                 alt="Clario"
-                className="h-[56px] w-auto"
+                className="h-[72px] w-auto"
               />
             </div>
 

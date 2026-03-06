@@ -130,7 +130,7 @@ export default function MockTest() {
             <img
               src={clarioLogo}
               alt="Clario"
-              className="h-[64px] w-auto"
+              className="h-[80px] w-auto"
             />
           </div>
 
