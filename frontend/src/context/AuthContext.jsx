@@ -7,6 +7,7 @@ import {
     signOut,
 } from "firebase/auth";
 import { auth, googleProvider } from "../config/firebase";
+import client from "../api/client";
 
 const AuthContext = createContext(null);
 
@@ -20,14 +21,7 @@ export function AuthProvider({ children }) {
                 // Auto-sync: ensure this Firebase user has a Postgres record.
                 // This runs on every page load / refresh, not just on login.
                 try {
-                    const token = await user.getIdToken();
-                    await fetch('/api/v1/auth/sync', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            Authorization: `Bearer ${token}`,
-                        },
-                    });
+                    await client.post('/auth/sync');
                 } catch (e) {
                     console.warn('[AuthContext] Sync failed:', e);
                 }
