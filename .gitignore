@@ -107,6 +107,9 @@ backend/node_modules/
 frontend/node_modules/
 frontend/dist/
 
+# Firebase service account credentials (NEVER commit this)
+**/firebase-service-account.json
+
 # Auto-generated agents
 .agent/
 .skills/
