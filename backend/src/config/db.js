@@ -9,8 +9,6 @@ const config = {
     max: 20,
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 5000,
-    // Ensure search_path includes 'public' — pg_dump can reset it on hosted DBs
-    options: '-c search_path=public',
 };
 
 // Add SSL for remote/hosted databases if not in dev
@@ -19,6 +17,11 @@ if (process.env.NODE_ENV !== 'development' || (process.env.DATABASE_URL && proce
 }
 
 const pool = new Pool(config);
+
+// Fix search_path on every new connection (pg_dump can reset it on hosted DBs)
+pool.on('connect', (client) => {
+    client.query('SET search_path TO public');
+});
 
 pool.on('error', (err) => {
     console.error('[DB] Unexpected idle client error:', err.message);
