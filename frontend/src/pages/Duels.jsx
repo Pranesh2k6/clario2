@@ -201,7 +201,7 @@ export default function Duels() {
             <img
               src={clarioLogo}
               alt="Clario"
-              className="h-[48px] w-auto"
+              className="h-[96px] w-auto"
             />
           </div>
 
