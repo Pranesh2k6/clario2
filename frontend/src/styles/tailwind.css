@@ -9,3 +9,8 @@
     background: radial-gradient(ellipse at center, var(--tw-gradient-stops));
   }
 }
+
+/* Override object-contain to use cover for the logo */
+.object-contain {
+  object-fit: cover;
+}
