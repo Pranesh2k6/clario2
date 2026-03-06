@@ -116,7 +116,7 @@ export default function Chapter() {
         {/* Sidebar */}
         <aside className="hidden lg:flex flex-col w-[260px] bg-[rgba(8,5,24,0.85)] backdrop-blur-xl border-r border-white/8">
           {/* Logo */}
-          <div className="py-3 px-6 border-b border-white/8">
+          <div className="w-[259px] h-[78.5px] border-b border-white/8 flex items-center justify-center">
             <img
               src={clarioLogo}
               alt="Clario"
