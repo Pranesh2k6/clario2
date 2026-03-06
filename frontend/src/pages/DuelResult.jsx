@@ -235,7 +235,7 @@ export default function DuelResult() {
       </div>
 
       {/* Main Content - Split Screen */}
-      <div className="relative z-10 min-h-screen flex items-center justify-center p-6">
+      <div className="relative z-10 min-h-screen flex items-start justify-center p-6 pt-12">
         <motion.div
           initial={{ scale: 0.95, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
@@ -487,7 +487,7 @@ export default function DuelResult() {
               </div>
 
               {/* Scrollable Content */}
-              <div className="flex-1 overflow-y-auto p-8 pt-6 space-y-6" style={{ maxHeight: 'calc(100vh - 200px)' }}>
+              <div className="flex-1 overflow-y-auto p-8 pt-6 space-y-6">
                 {/* Performance Stats Graph - REPLACED */}
                 <PerformanceStatsGraph
                   accuracy={Math.round(overallAccuracy)}
