@@ -113,7 +113,7 @@ export default function Dashboard() {
         {/* Sidebar */}
         <aside className="hidden lg:flex flex-col w-[260px] bg-[rgba(8,5,24,0.85)] backdrop-blur-xl border-r border-white/8">
           <div className="py-3 px-6 border-b border-white/8">
-            <img src={clarioLogo} alt="Clario" className="w-[160px] h-auto object-contain" />
+            <img src={clarioLogo} alt="Clario" className="w-[160px] h-[57.6px] object-contain" />
           </div>
           <nav className="flex-1 p-4 space-y-1">
             {navItems.map((item) => {
