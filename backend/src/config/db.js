@@ -9,6 +9,8 @@ const config = {
     max: 20,
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 5000,
+    // Ensure search_path includes 'public' — pg_dump can reset it on hosted DBs
+    options: '-c search_path=public',
 };
 
 // Add SSL for remote/hosted databases if not in dev
