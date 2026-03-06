@@ -12,6 +12,7 @@ async function firebaseAuth(req, res, next) {
     const authHeader = req.headers.authorization;
 
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        console.error('[Auth] Missing or malformed Authorization header');
         return res.status(401).json({
             error: 'Unauthorized',
             message: 'Missing or malformed Authorization header. Expected: Bearer <token>',
@@ -20,10 +21,20 @@ async function firebaseAuth(req, res, next) {
 
     const idToken = authHeader.split('Bearer ')[1];
 
+    // Step 1: Verify Firebase token
+    let decoded;
     try {
-        const decoded = await admin.auth().verifyIdToken(idToken);
+        decoded = await admin.auth().verifyIdToken(idToken);
+    } catch (err) {
+        console.error('[Auth] Firebase token verification failed:', err.code, err.message);
+        return res.status(401).json({
+            error: 'Unauthorized',
+            message: 'Invalid or expired Firebase token.',
+        });
+    }
 
-        // Look up the Postgres user ID by email
+    // Step 2: Look up the Postgres user (DB errors should NOT be 401)
+    try {
         const { query } = require('../config/db');
         const dbUser = await query('SELECT id, username FROM users WHERE email = $1', [decoded.email]);
         const dbId = dbUser.rows.length > 0 ? dbUser.rows[0].id : null;
@@ -37,10 +48,10 @@ async function firebaseAuth(req, res, next) {
         };
         next();
     } catch (err) {
-        console.error('[Auth] Token verification failed:', err.code, err.message);
-        return res.status(401).json({
-            error: 'Unauthorized',
-            message: 'Invalid or expired Firebase token.',
+        console.error('[Auth] Database lookup failed:', err.message);
+        return res.status(500).json({
+            error: 'Internal Server Error',
+            message: 'Failed to look up user in database.',
         });
     }
 }

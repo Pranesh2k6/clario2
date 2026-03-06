@@ -36,8 +36,31 @@ app.use(cors({
 app.use(express.json());
 
 // ─── Health Check ─────────────────────────────────────────────────────────────
-app.get('/api/health', (req, res) => {
-    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+app.get('/api/health', async (req, res) => {
+    let dbStatus = 'untested';
+    let firebaseStatus = 'untested';
+
+    try {
+        const { query } = require('./config/db');
+        await query('SELECT 1');
+        dbStatus = 'ok';
+    } catch (e) {
+        dbStatus = `error: ${e.message}`;
+    }
+
+    try {
+        const admin = require('./config/firebase');
+        firebaseStatus = admin.apps.length > 0 ? 'initialized' : 'not initialized';
+    } catch (e) {
+        firebaseStatus = `error: ${e.message}`;
+    }
+
+    res.json({
+        status: 'ok',
+        timestamp: new Date().toISOString(),
+        db: dbStatus,
+        firebase: firebaseStatus
+    });
 });
 
 // ─── API Routes ───────────────────────────────────────────────────────────────
