@@ -55,7 +55,7 @@ export default function CaseDetail() {
             <img
               src={clarioLogo}
               alt="Clario"
-              className="h-[80px] w-auto"
+              className="h-[48px] w-auto"
             />
           </div>
 

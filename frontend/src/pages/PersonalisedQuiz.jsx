@@ -318,7 +318,7 @@ export default function PersonalisedQuiz() {
             <img
               src={clarioLogo}
               alt="Clario"
-              className="h-[80px] w-auto"
+              className="h-[48px] w-auto"
             />
           </div>
 

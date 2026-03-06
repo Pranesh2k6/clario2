@@ -51,7 +51,7 @@ export default function OnboardingSubjects() {
               <img
                 src={clarioLogo}
                 alt="Clario"
-                className="h-[72px] w-auto"
+                className="h-[64px] w-auto"
               />
             </div>
 
