@@ -47,11 +47,11 @@ export default function OnboardingGoal() {
           {/* Glassmorphic Onboarding Card */}
           <div className="relative bg-[rgba(12,8,36,0.7)] backdrop-blur-xl rounded-3xl border border-white/12 shadow-[0_8px_32px_rgba(0,0,0,0.4)] p-8 sm:p-12">
             {/* Logo */}
-            <div className="flex items-center mb-8">
+            <div className="flex items-center mb-6">
               <img
                 src={clarioLogo}
                 alt="Clario"
-                className="h-[96px] w-auto"
+                className="w-[200px] h-auto object-contain"
               />
             </div>
 

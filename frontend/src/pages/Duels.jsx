@@ -197,11 +197,11 @@ export default function Duels() {
         {/* Sidebar */}
         <aside className="hidden lg:flex flex-col w-[260px] bg-[rgba(8,5,24,0.85)] backdrop-blur-xl border-r border-white/8">
           {/* Logo */}
-          <div className="p-6 border-b border-white/8">
+          <div className="py-3 px-6 border-b border-white/8">
             <img
               src={clarioLogo}
               alt="Clario"
-              className="h-[96px] w-auto"
+              className="w-[160px] h-auto object-contain"
             />
           </div>
 
