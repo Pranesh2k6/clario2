@@ -120,7 +120,7 @@ export default function Chapter() {
             <img
               src={clarioLogo}
               alt="Clario"
-              className="w-[160px] h-[57.6px] object-contain"
+              className="w-[160px] h-[57.6px] object-cover"
             />
           </div>
 
