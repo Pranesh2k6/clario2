@@ -55,11 +55,19 @@ app.get('/api/health', async (req, res) => {
         firebaseStatus = `error: ${e.message}`;
     }
 
+    let dbHost = 'unknown';
+    if (process.env.DATABASE_URL) {
+        try {
+            dbHost = new URL(process.env.DATABASE_URL).hostname;
+        } catch (e) { }
+    }
+
     res.json({
         status: 'ok',
         timestamp: new Date().toISOString(),
         db: dbStatus,
-        firebase: firebaseStatus
+        firebase: firebaseStatus,
+        dbHost
     });
 });
 
