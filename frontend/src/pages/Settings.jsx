@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { motion } from 'motion/react';
 import { SpaceBackground } from '../components/SpaceBackground';
@@ -17,6 +17,8 @@ import {
   ChevronRight,
   LogOut
 } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import client from '../api/client';
 const clarioLogo = '/clario-logo.png';
 
 const navItems = [
@@ -35,6 +37,20 @@ export default function Settings() {
   const [duelNotifications, setDuelNotifications] = useState(true);
   const [weeklyReports, setWeeklyReports] = useState(true);
   const [studyReminders, setStudyReminders] = useState(true);
+  const { currentUser } = useAuth();
+  const [profile, setProfile] = useState(null);
+
+  useEffect(() => {
+    client.get('/users/me')
+      .then(res => setProfile(res.data.user))
+      .catch(() => { });
+  }, []);
+
+  const userEmail = currentUser?.email || '';
+  const userName = profile?.username?.split('_').slice(0, -1).join('_') || userEmail.split('@')[0] || 'User';
+  const displayName = userName.charAt(0).toUpperCase() + userName.slice(1);
+  const initials = displayName.split(/[\s._-]+/).map(w => w[0]?.toUpperCase()).filter(Boolean).slice(0, 2).join('');
+  const examPrep = 'JEE Main 2026';
 
   const handleNavigation = (path) => {
     const isImplemented = ['/dashboard', '/galaxy', '/duels', '/planner', '/tests', '/analytics', '/settings'].includes(path);
@@ -130,7 +146,7 @@ export default function Settings() {
                 <div className="flex items-start gap-6">
                   {/* Profile Picture */}
                   <div className="w-20 h-20 rounded-full bg-gradient-to-br from-[#7C3AED] to-[#6366F1] flex items-center justify-center flex-shrink-0">
-                    <span className="text-[24px] font-bold text-white">AK</span>
+                    <span className="text-[24px] font-bold text-white">{initials || 'U'}</span>
                   </div>
 
                   {/* Profile Info */}
@@ -138,17 +154,17 @@ export default function Settings() {
                     <div className="space-y-3">
                       <div>
                         <p className="text-[11px] text-[#9CA3AF] mb-1">Name</p>
-                        <p className="text-[14px] font-medium text-[#F3F4F6]">Arjun Kumar</p>
+                        <p className="text-[14px] font-medium text-[#F3F4F6]">{displayName}</p>
                       </div>
 
                       <div>
                         <p className="text-[11px] text-[#9CA3AF] mb-1">Email</p>
-                        <p className="text-[14px] font-medium text-[#F3F4F6]">arjun.kumar@email.com</p>
+                        <p className="text-[14px] font-medium text-[#F3F4F6]">{userEmail}</p>
                       </div>
 
                       <div>
                         <p className="text-[11px] text-[#9CA3AF] mb-1">Exam Preparation</p>
-                        <p className="text-[14px] font-medium text-[#F3F4F6]">JEE Main 2026</p>
+                        <p className="text-[14px] font-medium text-[#F3F4F6]">{examPrep}</p>
                       </div>
                     </div>
 
