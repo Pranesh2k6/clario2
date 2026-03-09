@@ -26,6 +26,8 @@ services:
       - "host.docker.internal:host-gateway" # Access host Postgres
     environment:
       - NODE_ENV=development
+      - ANALYTICS_API_URL=http://host.docker.internal:8000
+      - REDIS_URL=redis://host.docker.internal:6379
 
   # ── Vite React Frontend ──────────────────────────────────────────────────
   frontend:

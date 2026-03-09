@@ -252,7 +252,7 @@ export default function StudyPlanner() {
   });
 
   const handleNavigation = (path) => {
-    const isImplemented = ['/dashboard', '/galaxy', '/duels', '/planner'].includes(path);
+    const isImplemented = ['/dashboard', '/galaxy', '/duels', '/planner', '/tests', '/analytics', '/settings'].includes(path);
     if (isImplemented) navigate(path);
   };
 
@@ -342,7 +342,7 @@ export default function StudyPlanner() {
             {navItems.map((item) => {
               const Icon = item.icon;
               const isActive = item.path === '/planner';
-              const isImplemented = ['/dashboard', '/galaxy', '/duels', '/planner'].includes(item.path);
+              const isImplemented = ['/dashboard', '/galaxy', '/duels', '/planner', '/tests', '/analytics', '/settings'].includes(item.path);
 
               return (
                 <button

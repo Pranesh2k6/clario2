@@ -173,3 +173,166 @@ def extract_daily_metrics(user_id=None, days=30):
             rows = cur.fetchall()
 
     return [dict(zip(columns, row)) for row in rows]
+
+
+# ─── Duel Performance Signals (Teacher-Style Feedback) ────────────────────────
+
+def extract_duel_performance_signals(user_id, duel_id=None):
+    """
+    Extract structured performance signals from a specific duel (or latest duel).
+
+    These signals are discrete string labels — NOT raw numbers — designed to be
+    mapped directly to teacher-style feedback templates by the NLG layer.
+
+    Returns:
+        dict with keys:
+            weak_topic:               str | None — topic with lowest accuracy in this duel
+            strong_topic:             str | None — topic with highest accuracy + fastest speed
+            speed_pattern:            str — one of 'fast_correct', 'fast_incorrect',
+                                              'slow_correct', 'slow_incorrect', 'balanced'
+            difficulty_pattern:       str — e.g. 'easy_fast_medium_slow', 'uniform', ...
+            consistent_accuracy_topic: str | None — topic with 100% accuracy (≥2 questions)
+    """
+    # ── Fetch per-question attempt data for this duel ─────────────────────
+    if duel_id:
+        query = """
+            SELECT topic, difficulty_at_time AS difficulty, is_correct, time_taken_ms
+            FROM attempt_history
+            WHERE user_id = %s AND duel_id = %s
+            ORDER BY created_at
+        """
+        params = (str(user_id), str(duel_id))
+    else:
+        # Use the most recent duel
+        query = """
+            SELECT topic, difficulty_at_time AS difficulty, is_correct, time_taken_ms
+            FROM attempt_history
+            WHERE user_id = %s
+              AND duel_id = (
+                  SELECT duel_id FROM attempt_history
+                  WHERE user_id = %s AND duel_id IS NOT NULL
+                  ORDER BY created_at DESC LIMIT 1
+              )
+            ORDER BY created_at
+        """
+        params = (str(user_id), str(user_id))
+
+    with db.telemetry_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(query, params)
+            columns = [desc[0] for desc in cur.description]
+            rows = cur.fetchall()
+
+    attempts = [dict(zip(columns, row)) for row in rows]
+
+    if not attempts:
+        return {
+            "weak_topic": None,
+            "strong_topic": None,
+            "speed_pattern": "balanced",
+            "difficulty_pattern": "uniform",
+            "consistent_accuracy_topic": None,
+        }
+
+    # ── Classify per-topic accuracy ───────────────────────────────────────
+    topic_stats = {}
+    for a in attempts:
+        topic = a.get("topic") or "General"
+        if topic not in topic_stats:
+            topic_stats[topic] = {"correct": 0, "total": 0, "total_time_ms": 0}
+        topic_stats[topic]["total"] += 1
+        topic_stats[topic]["total_time_ms"] += float(a.get("time_taken_ms") or 0)
+        if a.get("is_correct"):
+            topic_stats[topic]["correct"] += 1
+
+    # Compute accuracy per topic
+    for stats in topic_stats.values():
+        stats["accuracy"] = stats["correct"] / stats["total"] if stats["total"] > 0 else 0
+        stats["avg_time_ms"] = stats["total_time_ms"] / stats["total"] if stats["total"] > 0 else 0
+
+    # weak_topic: lowest accuracy (must have at least 1 incorrect)
+    weak_candidates = [(t, s) for t, s in topic_stats.items() if s["correct"] < s["total"]]
+    weak_topic = min(weak_candidates, key=lambda x: x[1]["accuracy"])[0] if weak_candidates else None
+
+    # strong_topic: highest accuracy with fastest avg speed
+    strong_candidates = [(t, s) for t, s in topic_stats.items() if s["accuracy"] >= 0.8]
+    if strong_candidates:
+        strong_topic = min(strong_candidates, key=lambda x: x[1]["avg_time_ms"])[0]
+    else:
+        strong_topic = None
+
+    # consistent_accuracy_topic: 100% accuracy with ≥2 questions
+    consistent_topic = None
+    for t, s in topic_stats.items():
+        if s["accuracy"] == 1.0 and s["total"] >= 2:
+            consistent_topic = t
+            break
+
+    # ── Speed pattern (overall) ───────────────────────────────────────────
+    FAST_MS = 8000
+    total_correct = sum(1 for a in attempts if a.get("is_correct"))
+    total_incorrect = len(attempts) - total_correct
+    avg_time = sum(float(a.get("time_taken_ms") or 0) for a in attempts) / len(attempts)
+    overall_accuracy = total_correct / len(attempts) if attempts else 0
+
+    if avg_time < FAST_MS and overall_accuracy >= 0.7:
+        speed_pattern = "fast_correct"
+    elif avg_time < FAST_MS and overall_accuracy < 0.5:
+        speed_pattern = "fast_incorrect"
+    elif avg_time >= 15000 and overall_accuracy >= 0.7:
+        speed_pattern = "slow_correct"
+    elif avg_time >= 15000 and overall_accuracy < 0.5:
+        speed_pattern = "slow_incorrect"
+    else:
+        speed_pattern = "balanced"
+
+    # ── Difficulty pattern ────────────────────────────────────────────────
+    def _classify_difficulty(val):
+        """Convert difficulty_at_time float to Easy/Medium/Hard label."""
+        if val is None:
+            return "medium"
+        if isinstance(val, (int, float)):
+            if val <= 0.33:
+                return "easy"
+            elif val <= 0.66:
+                return "medium"
+            else:
+                return "hard"
+        return str(val).lower() or "medium"
+
+    diff_stats = {}
+    for a in attempts:
+        diff = _classify_difficulty(a.get("difficulty"))
+        if diff not in diff_stats:
+            diff_stats[diff] = {"total_time": 0, "count": 0}
+        diff_stats[diff]["total_time"] += float(a.get("time_taken_ms") or 0)
+        diff_stats[diff]["count"] += 1
+
+    for d in diff_stats.values():
+        d["avg_time"] = d["total_time"] / d["count"] if d["count"] > 0 else 0
+
+    easy_time = diff_stats.get("easy", {}).get("avg_time", 0)
+    medium_time = diff_stats.get("medium", {}).get("avg_time", 0)
+    hard_time = diff_stats.get("hard", {}).get("avg_time", 0)
+
+    if easy_time > 0 and medium_time > 0 and medium_time > easy_time * 1.5:
+        difficulty_pattern = "easy_fast_medium_slow"
+    elif hard_time > 0 and hard_time > medium_time * 1.5:
+        difficulty_pattern = "hard_slow"
+    elif easy_time > 0 and medium_time > 0 and hard_time > 0:
+        max_t = max(easy_time, medium_time, hard_time)
+        min_t = min(easy_time, medium_time, hard_time)
+        if max_t < min_t * 1.3:
+            difficulty_pattern = "uniform"
+        else:
+            difficulty_pattern = "progressive_slower"
+    else:
+        difficulty_pattern = "uniform"
+
+    return {
+        "weak_topic": weak_topic,
+        "strong_topic": strong_topic,
+        "speed_pattern": speed_pattern,
+        "difficulty_pattern": difficulty_pattern,
+        "consistent_accuracy_topic": consistent_topic,
+    }

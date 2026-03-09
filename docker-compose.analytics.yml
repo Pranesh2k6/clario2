@@ -72,6 +72,31 @@ services:
     # Pull Llama 3.1 8B on first start:
     #   docker exec clario_ollama ollama pull llama3.1:8b
 
+  # ── Python Analytics API (FastAPI) ───────────────────────────────────────
+  analytics-api:
+    build:
+      context: ./analytics-engine
+      dockerfile: Dockerfile
+    container_name: clario_analytics_api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./analytics-engine/analytics:/app/analytics
+      - ./analytics-engine/training_data:/app/training_data
+    depends_on:
+      - redis
+      - ollama
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - OLLAMA_URL=http://ollama:11434/api/generate
+      - OLLAMA_MODEL=llama3.1:8b
+      - PRIMARY_DATABASE_URL=postgresql://praneshjs@host.docker.internal:5432/clario_primary
+      - TELEMETRY_DATABASE_URL=postgresql://praneshjs@host.docker.internal:5432/clario_primary
+      - TIMESCALE_DATABASE_URL=postgresql://clario:clario_timescale_secret@timescaledb:5432/clario_timescale
+    extra_hosts:
+      - "host.docker.internal:host-gateway" # Access host Postgres
+
     # ── MLFlow (ML Experiment Tracking) ──────────────────────────────────────
   mlflow:
     image: ghcr.io/mlflow/mlflow:v2.11.1

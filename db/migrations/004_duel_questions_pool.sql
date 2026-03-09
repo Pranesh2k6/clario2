@@ -26,9 +26,9 @@ CREATE INDEX IF NOT EXISTS idx_dqp_subject ON duel_questions_pool (subject) WHER
 CREATE INDEX IF NOT EXISTS idx_dqp_type ON duel_questions_pool (question_type) WHERE is_active = TRUE;
 CREATE INDEX IF NOT EXISTS idx_dqp_difficulty ON duel_questions_pool (difficulty) WHERE is_active = TRUE;
 
--- 2. Alter duels table: change duel_questions and subject_ids from UUID[] to TEXT[]
-ALTER TABLE duels ALTER COLUMN duel_questions TYPE TEXT[] USING duel_questions::TEXT[];
-ALTER TABLE duels ALTER COLUMN subject_ids TYPE TEXT[] USING subject_ids::TEXT[];
+-- 2. Alter duels table: add duel_questions and subject_ids 
+ALTER TABLE duels ADD COLUMN IF NOT EXISTS duel_questions TEXT[];
+ALTER TABLE duels ADD COLUMN IF NOT EXISTS subject_ids TEXT[];
 
 -- 3. Add time-tracking columns for two-phase duel completion
 ALTER TABLE duels ADD COLUMN IF NOT EXISTS player_1_finished_at TIMESTAMPTZ;

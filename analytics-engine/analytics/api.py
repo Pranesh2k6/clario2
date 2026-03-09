@@ -15,8 +15,8 @@ from .trueskill_rating import find_fair_opponents
 from .elo_rating import get_rating  # kept for backward compat display rating
 from .recommendation_engine import get_active_recommendations, complete_recommendation
 from .behavioral_analytics import compute_learning_velocity
-from .feature_extraction import extract_user_duel_stats, extract_daily_metrics
-from .nlg_formatter import format_insights, format_recommendation
+from .feature_extraction import extract_user_duel_stats, extract_daily_metrics, extract_duel_performance_signals
+from .nlg_formatter import format_insights, format_recommendation, format_duel_insights
 from .trueskill_rating import get_match_quality
 
 app = FastAPI(
@@ -114,12 +114,31 @@ async def get_dashboard(user_id: str):
 # ─── NLG Insights ─────────────────────────────────────────────────────────────
 
 @app.get("/api/v1/analytics/insights/{user_id}")
-async def get_insights(user_id: str, context: str = Query(default="study_planner")):
+async def get_insights(
+    user_id: str,
+    context: str = Query(default="study_planner"),
+    duel_id: str = Query(default=None),
+):
     """
     Get NLG-formatted human-readable insights for a student.
     Context: 'duel_result', 'study_planner', or 'recommendation'.
+
+    For 'duel_result' context, uses the new structured signal extraction
+    pipeline to produce teacher-style feedback.
     """
     try:
+        # ── Duel result context: use structured signals ──────────────────
+        if context == "duel_result":
+            signals = extract_duel_performance_signals(user_id, duel_id=duel_id)
+            insights = format_duel_insights(signals)
+            return {
+                "user_id": user_id,
+                "context": context,
+                "insights": insights,
+                "signals": signals,  # expose for frontend debugging
+            }
+
+        # ── Other contexts: use legacy pipeline ──────────────────────────
         weak = get_weak_topics(user_id)
         knowledge = get_knowledge_vector(user_id)
         rating = get_rating(user_id)

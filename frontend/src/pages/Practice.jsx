@@ -63,7 +63,7 @@ export default function Practice() {
             {navItems.map((item) => {
               const Icon = item.icon;
               const isActive = false;
-              const isImplemented = ['/dashboard', '/galaxy', '/duels', '/planner'].includes(item.path);
+              const isImplemented = ['/dashboard', '/galaxy', '/duels', '/planner', '/tests', '/analytics', '/settings'].includes(item.path);
 
               return (
                 <button

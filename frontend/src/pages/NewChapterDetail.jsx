@@ -26,8 +26,9 @@ export default function ChapterDetail() {
     }
 
     const isKin = chapter.id === "motion2d";
+    const hasLearn = isKin || chapter.id === "limits";
     const modes = [
-        { icon: "📖", title: "Learn", desc: "Step-by-step concept walkthrough with live animation", tag: "RECOMMENDED", tc: "#a78bfa", avail: isKin, onCk: () => navigate(`/subject/${subjectId}/chapter/${chapterId}/learn`) },
+        { icon: "📖", title: "Learn", desc: "Step-by-step concept walkthrough with live animation", tag: "RECOMMENDED", tc: "#a78bfa", avail: hasLearn, onCk: () => navigate(`/subject/${subjectId}/chapter/${chapterId}/learn`) },
         { icon: "💡", title: "Practice Cases", desc: "Investigation-style cinematic challenges — Operation Vectorfall", tag: "NEW", tc: "#fde68a", avail: isKin, onCk: () => navigate(`/subject/${subjectId}/chapter/${chapterId}/vectorfall`) },
         { icon: "🎯", title: "Personalised Quiz", desc: "Adaptive questions, your level", tag: "ADAPTIVE", tc: "#34d399", avail: isKin, onCk: () => navigate(`/subject/${subjectId}/chapter/${chapterId}/quiz`) },
         { icon: "⏱️", title: "Mock Test", desc: "Exam conditions, full chapter", extra: "45 min", tc: "#6b7fa8", avail: false, onCk: null },

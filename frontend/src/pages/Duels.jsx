@@ -210,7 +210,7 @@ export default function Duels() {
             {navItems.map((item) => {
               const Icon = item.icon;
               const isActive = item.path === '/duels';
-              const isImplemented = ['/dashboard', '/galaxy', '/duels', '/planner'].includes(item.path);
+              const isImplemented = ['/dashboard', '/galaxy', '/duels', '/planner', '/tests', '/analytics', '/settings'].includes(item.path);
 
               return (
                 <button

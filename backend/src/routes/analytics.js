@@ -263,74 +263,44 @@ router.post('/recommendations/:id/complete', firebaseAuth, async (req, res) => {
 /**
  * GET /api/v1/analytics/insights
  * Returns NLG-formatted human-readable insights for the authenticated student.
- * Uses template-based formatting (Python analytics engine handles Ollama).
+ * Proxies to the Python analytics engine for teacher-style feedback.
  */
 router.get('/insights', firebaseAuth, async (req, res) => {
     try {
         const userId = req.user.dbId;
         const context = req.query.context || 'study_planner';
+        const duelId = req.query.duel_id || null;
 
-        // Fetch weak topics and overall stats
-        const weakResult = await pool.query(
-            `SELECT subject, topic, mastery_probability, behavior_label
-             FROM student_knowledge_profiles
-             WHERE user_id = $1 AND mastery_probability < 0.5
-               AND total_attempts >= 10
-             ORDER BY mastery_probability ASC LIMIT 5`,
-            [userId]
-        );
+        // Call Python analytics API
+        const axios = require('axios');
+        const pythonApiUrl = process.env.ANALYTICS_API_URL || 'http://localhost:8000';
 
-        const overallResult = await pool.query(
-            `SELECT AVG(mastery_probability) AS avg_mastery,
-                    SUM(total_attempts) AS total_attempts,
-                    SUM(correct_attempts) AS correct_attempts
-             FROM student_knowledge_profiles
-             WHERE user_id = $1`,
-            [userId]
-        );
-
-        const overall = overallResult.rows[0] || {};
-        const accuracy = overall.total_attempts > 0
-            ? overall.correct_attempts / overall.total_attempts : 0;
-        const avgMastery = parseFloat(overall.avg_mastery || 0);
-
-        // Generate template-based insights
-        const insights = [];
-
-        if (context === 'duel_result' || context === 'study_planner') {
-            const pct = Math.round(accuracy * 100);
-            if (pct >= 80) {
-                insights.push(`Excellent overall accuracy at ${pct}% — keep up the momentum!`);
-            } else if (pct >= 50) {
-                insights.push(`Your accuracy is at ${pct}% — solid, with room to grow`);
-            } else if (pct > 0) {
-                insights.push(`Accuracy at ${pct}% — focus on fundamentals to improve`);
-            }
-
-            if (avgMastery > 0) {
-                insights.push(`Average mastery across topics: ${Math.round(avgMastery * 100)}%`);
-            }
-
-            for (const w of weakResult.rows.slice(0, 2)) {
-                const m = Math.round((w.mastery_probability || 0) * 100);
-                if (w.behavior_label === 'guessing') {
-                    insights.push(`Slow down on ${w.topic} — rushing leads to mistakes`);
-                } else if (w.behavior_label === 'struggling') {
-                    insights.push(`${w.topic} needs more practice (${m}% mastery)`);
-                } else {
-                    insights.push(`Focus area: ${w.topic} at ${m}% mastery`);
-                }
-            }
+        let queryParams = `context=${context}`;
+        if (duelId) {
+            queryParams += `&duel_id=${duelId}`;
         }
 
-        if (insights.length === 0) {
-            insights.push('Keep practicing to unlock personalized insights!');
-        }
+        const pythonResponse = await axios.get(
+            `${pythonApiUrl}/api/v1/analytics/insights/${userId}?${queryParams}`,
+            { timeout: 5000 }
+        );
 
-        res.json({ user_id: userId, context, insights });
+        // Return insights from Python API
+        res.json({
+            user_id: userId,
+            context,
+            insights: pythonResponse.data.insights || [],
+            signals: pythonResponse.data.signals || null, // For debugging
+        });
     } catch (err) {
-        console.error('[Analytics] Insights error:', err);
-        res.status(500).json({ error: 'Failed to generate insights' });
+        console.error('[Analytics] Insights proxy error:', err.message);
+
+        // Fallback: return a simple message if Python API is unavailable
+        res.json({
+            user_id: req.user.dbId,
+            context: req.query.context || 'study_planner',
+            insights: ['Analytics system is currently processing your performance data.'],
+        });
     }
 });
 

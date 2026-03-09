@@ -1,23 +1,34 @@
 """
-Clario Analytics Engine — NLG Formatter (Ollama Llama 3.1 8B)
-Translates structured ML output into natural, readable English.
+Clario Analytics Engine — NLG Formatter (Teacher-Style Feedback)
+Translates structured ML performance signals into professional,
+pedagogical "teacher-style" feedback sentences.
 
 IMPORTANT: The LLM does NOT perform any analysis. It only reformats
-pre-computed ML metrics into human-friendly sentences.
+pre-computed structured signals into human-friendly sentences.
+
+Architecture:
+    Structured Signals → Template Fallback → (optional) LLM Enhancement → Output
 """
 
 import json
-import httpx
+import os
 import hashlib
+from datetime import datetime, timezone
+
+import httpx
 import redis as redis_lib
 from .config import config
 
-OLLAMA_URL = "http://localhost:11434/api/generate"
-MODEL_NAME = "llama3.1:8b"
+OLLAMA_URL = config.OLLAMA_URL
+MODEL_NAME = config.OLLAMA_MODEL
 CACHE_TTL = 3600  # 1 hour
 
 # Redis client for caching generated text
 _redis = None
+
+# ─── Training data directory for fine-tuning ──────────────────────────────────
+TRAINING_DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "training_data")
+TRAINING_DATA_FILE = os.path.join(TRAINING_DATA_DIR, "teacher_feedback_v1.jsonl")
 
 
 def _get_redis():
@@ -37,9 +48,131 @@ def _hash_input(data):
     return hashlib.sha256(serialized.encode()).hexdigest()[:16]
 
 
+# ─── Teacher-Style Feedback Templates ─────────────────────────────────────────
+# These 9 templates map directly to the structured ML signals.
+# They are used as the deterministic fallback AND as the gold-standard tone
+# for guiding the LLM prompt.
+
+TEACHER_TEMPLATES = {
+    # Template 1 — weak_topic (improving)
+    "weak_improving": (
+        "Improving accuracy on questions involving {topic} may significantly "
+        "increase your overall duel performance."
+    ),
+    # Template 2 — general performance (no specific topic)
+    "general_performance": (
+        "Your current performance suggests you are well prepared for questions "
+        "at this difficulty level, though refining a few concepts could improve consistency."
+    ),
+    # Template 3 — consistent_accuracy_topic
+    "consistent_accuracy": (
+        "Your accuracy remained consistent across multiple questions involving "
+        "{topic}, indicating reliable understanding."
+    ),
+    # Template 4 — difficulty_pattern: easy_fast_medium_slow
+    "difficulty_gap": (
+        "You solved foundational questions efficiently, while more advanced "
+        "questions required additional time and reasoning."
+    ),
+    # Template 5 — speed_pattern: fast_correct
+    "fast_correct": (
+        "Despite the competitive pace of the duel, you maintained strong "
+        "accuracy on several questions."
+    ),
+    # Template 6 — difficulty_pattern: hard_slow / progressive_slower
+    "slow_complex": (
+        "Questions requiring multiple reasoning steps took longer to solve, "
+        "suggesting these problems required deeper analysis."
+    ),
+    # Template 7 — speed_pattern: fast_incorrect
+    "fast_incorrect": (
+        "Some responses were submitted very quickly but were incorrect, "
+        "which may indicate uncertainty with the underlying concept."
+    ),
+    # Template 8 — weak_topic (most incorrect)
+    "weak_topic_review": (
+        "Most incorrect responses were associated with {topic}, suggesting "
+        "this concept may benefit from further review."
+    ),
+    # Template 9 — strong_topic
+    "strong_confidence": (
+        "You demonstrated strong confidence in {topic}, answering these "
+        "questions both quickly and accurately."
+    ),
+}
+
+# ─── Signal → Template Mapping ────────────────────────────────────────────────
+# Each ML signal maps to one or more template keys.
+SIGNAL_TEMPLATE_MAP = {
+    "weak_topic":                ["weak_topic_review", "weak_improving"],
+    "strong_topic":              ["strong_confidence"],
+    "fast_correct":              ["fast_correct"],
+    "fast_incorrect":            ["fast_incorrect"],
+    "easy_fast_medium_slow":     ["difficulty_gap"],
+    "hard_slow":                 ["slow_complex"],
+    "progressive_slower":        ["slow_complex"],
+    "consistent_accuracy_topic": ["consistent_accuracy"],
+}
+
+
+def format_duel_insights(signals):
+    """
+    Format structured duel performance signals into teacher-style feedback.
+
+    This is the PRIMARY entry point for duel result insights.
+
+    Args:
+        signals: dict from extract_duel_performance_signals(), e.g.:
+            {
+                "weak_topic": "Quantum Numbers",
+                "strong_topic": "Complex Numbers",
+                "speed_pattern": "fast_correct",
+                "difficulty_pattern": "easy_fast_medium_slow",
+                "consistent_accuracy_topic": "Atomic Structure"
+            }
+
+    Returns:
+        list of 3-4 human-readable teacher-style insight strings
+    """
+    # Check cache first
+    cache_data = {"signals": signals, "type": "teacher_duel"}
+    data_hash = _hash_input(cache_data)
+
+    try:
+        r = _get_redis()
+        cached = r.get(_cache_key(data_hash))
+        if cached:
+            return json.loads(cached)
+    except Exception:
+        pass  # Redis down — skip cache
+
+    # Try LLM-enhanced generation first
+    insights = _llm_generate_teacher_insights(signals)
+
+    # Fall back to deterministic templates if LLM fails
+    if not insights:
+        insights = _teacher_template_fallback(signals)
+
+    # Cap at 4 insights
+    insights = insights[:4]
+
+    # Cache the result
+    try:
+        r = _get_redis()
+        r.setex(_cache_key(data_hash), CACHE_TTL, json.dumps(insights))
+    except Exception:
+        pass
+
+    # Log for fine-tuning dataset
+    _log_training_pair(signals, insights)
+
+    return insights
+
+
 def format_insights(ml_output, context="duel_result"):
     """
     Format ML analysis output into readable insights.
+    Backwards-compatible entry point.
 
     Args:
         ml_output: dict with ML-computed metrics (mastery, behavior, etc.)
@@ -48,6 +181,11 @@ def format_insights(ml_output, context="duel_result"):
     Returns:
         list of human-readable insight strings
     """
+    # If this is a duel_result context and we have structured signals, use the
+    # new teacher-style pipeline
+    if context == "duel_result" and "speed_pattern" in ml_output:
+        return format_duel_insights(ml_output)
+
     # Check cache first
     cache_data = {"output": ml_output, "context": context}
     data_hash = _hash_input(cache_data)
@@ -58,7 +196,7 @@ def format_insights(ml_output, context="duel_result"):
         if cached:
             return json.loads(cached)
     except Exception:
-        pass  # Redis down — skip cache
+        pass
 
     # Build the prompt
     prompt = _build_prompt(ml_output, context)
@@ -83,7 +221,6 @@ def format_insights(ml_output, context="duel_result"):
             result = response.json().get("response", "").strip()
             insights = _parse_response(result)
 
-            # Cache the result
             try:
                 r = _get_redis()
                 r.setex(_cache_key(data_hash), CACHE_TTL, json.dumps(insights))
@@ -93,9 +230,8 @@ def format_insights(ml_output, context="duel_result"):
             return insights
 
     except (httpx.ConnectError, httpx.TimeoutException):
-        pass  # Ollama not running — fall back to template
+        pass
 
-    # Fallback: template-based formatting (no LLM needed)
     return _template_fallback(ml_output, context)
 
 
@@ -156,7 +292,6 @@ Rules:
     except (httpx.ConnectError, httpx.TimeoutException):
         pass
 
-    # Fallback
     return {
         "title": f"Practice {rec_data.get('topic', 'this topic')}",
         "description": f"Focus on {rec_data.get('subject', 'this subject')} — "
@@ -164,25 +299,117 @@ Rules:
     }
 
 
-# ─── Prompt Builders ──────────────────────────────────────────────────────────
+# ─── Teacher-Style LLM Generation ────────────────────────────────────────────
+
+def _llm_generate_teacher_insights(signals):
+    """
+    Use Ollama to generate teacher-style feedback from structured signals.
+    Returns a list of insight strings, or empty list on failure.
+    """
+    prompt = f"""System:
+You are an educational performance analyst generating professional teacher-style feedback for a student after a competitive duel quiz.
+
+User Input:
+{json.dumps(signals, indent=2, default=str)}
+
+Task:
+Generate 3 to 4 short insights about the student's duel performance based on the input signals.
+
+Constraints:
+- Output ONLY the insight sentences, one per line, prefixed with "- ".
+- Each sentence MUST be 15-25 words long.
+- Tone MUST be professional teacher feedback — like a teacher reviewing a student's test.
+- MUST AVOID generic phrases like "Accuracy dropped", "Low performance", "Keep practicing", "Great job", "Review core concepts".
+- PREFER phrasing like "Several incorrect responses were associated with...", "You demonstrated strong confidence in...", "Your accuracy remained consistent across..."
+- If a topic name is provided in the signals, USE IT in the sentence.
+- Do NOT add analysis beyond what the signals indicate.
+- Do NOT use bullet numbering or headers."""
+
+    try:
+        response = httpx.post(
+            OLLAMA_URL,
+            json={
+                "model": MODEL_NAME,
+                "prompt": prompt,
+                "stream": False,
+                "options": {
+                    "temperature": 0.25,
+                    "num_predict": 250,
+                    "top_p": 0.85,
+                },
+            },
+            timeout=15.0,
+        )
+
+        if response.status_code == 200:
+            result = response.json().get("response", "").strip()
+            insights = _parse_response(result)
+            # Validate: each insight should be 10-35 words (some tolerance)
+            valid = [i for i in insights if 10 <= len(i.split()) <= 35]
+            return valid[:4] if valid else []
+
+    except (httpx.ConnectError, httpx.TimeoutException):
+        pass
+
+    return []
+
+
+# ─── Teacher Template Deterministic Fallback ──────────────────────────────────
+
+def _teacher_template_fallback(signals):
+    """
+    Generate teacher-style insights using deterministic template mapping.
+    This guarantees consistent, high-quality output when Ollama is unavailable.
+    """
+    insights = []
+
+    # 1. Strong topic → Template 9
+    strong = signals.get("strong_topic")
+    if strong:
+        insights.append(
+            TEACHER_TEMPLATES["strong_confidence"].format(topic=strong)
+        )
+
+    # 2. Weak topic → Template 8 (or Template 1 as alternate)
+    weak = signals.get("weak_topic")
+    if weak:
+        insights.append(
+            TEACHER_TEMPLATES["weak_topic_review"].format(topic=weak)
+        )
+
+    # 3. Speed pattern
+    speed = signals.get("speed_pattern", "balanced")
+    if speed == "fast_correct":
+        insights.append(TEACHER_TEMPLATES["fast_correct"])
+    elif speed == "fast_incorrect":
+        insights.append(TEACHER_TEMPLATES["fast_incorrect"])
+
+    # 4. Difficulty pattern
+    difficulty = signals.get("difficulty_pattern", "uniform")
+    if difficulty == "easy_fast_medium_slow":
+        insights.append(TEACHER_TEMPLATES["difficulty_gap"])
+    elif difficulty in ("hard_slow", "progressive_slower"):
+        insights.append(TEACHER_TEMPLATES["slow_complex"])
+
+    # 5. Consistent accuracy topic → Template 3
+    consistent = signals.get("consistent_accuracy_topic")
+    if consistent and len(insights) < 4:
+        insights.append(
+            TEACHER_TEMPLATES["consistent_accuracy"].format(topic=consistent)
+        )
+
+    # If we still have fewer than 2 insights, add a general filler
+    if len(insights) < 2:
+        insights.append(TEACHER_TEMPLATES["general_performance"])
+
+    return insights[:4]
+
+
+# ─── Legacy Prompt Builders (for non-duel contexts) ───────────────────────────
 
 def _build_prompt(ml_output, context):
-    """Build the LLM prompt based on context."""
-    if context == "duel_result":
-        return f"""You are a friendly JEE preparation coach writing post-duel insights.
-Convert the following ML analysis data into 3-4 short, natural English bullet points.
-
-Rules:
-- Each bullet should be ONE concise sentence (max 15 words)
-- Be encouraging but honest
-- Do NOT add analysis — only rephrase what the data says
-- Do NOT use technical terms like 'mastery_probability' or 'BKT'
-- Output ONLY the bullet points, one per line, prefixed with "- "
-
-ML Data:
-{json.dumps(ml_output, indent=2, default=str)}"""
-
-    elif context == "study_planner":
+    """Build the LLM prompt for non-duel contexts."""
+    if context == "study_planner":
         return f"""You are a friendly JEE study planner assistant.
 Convert these study analytics into 3-4 actionable, motivating sentences for a student's dashboard.
 
@@ -209,9 +436,12 @@ def _parse_response(text):
         line = line.strip()
         if line.startswith("- "):
             line = line[2:]
+        # Remove any numbering like "1. " or "1) "
+        if len(line) > 3 and line[0].isdigit() and line[1] in ".)" and line[2] == " ":
+            line = line[3:]
         if line and len(line) > 3:
             insights.append(line)
-    return insights[:4]  # Cap at 4
+    return insights[:4]
 
 
 def _parse_recommendation(text, fallback_data):
@@ -229,35 +459,13 @@ def _parse_recommendation(text, fallback_data):
     return {"title": title, "description": description}
 
 
-# ─── Template Fallback ────────────────────────────────────────────────────────
+# ─── Legacy Template Fallback (non-duel contexts) ────────────────────────────
 
 def _template_fallback(ml_output, context):
-    """Generate insights without the LLM using simple templates."""
+    """Generate insights without the LLM for non-duel contexts."""
     insights = []
 
-    if context == "duel_result":
-        accuracy = ml_output.get("accuracy")
-        if accuracy is not None:
-            pct = round(accuracy * 100) if accuracy <= 1 else round(accuracy)
-            if pct >= 80:
-                insights.append(f"Excellent accuracy this duel — {pct}% correct")
-            elif pct < 50:
-                insights.append(f"Accuracy was {pct}% — let's review the missed topics")
-            else:
-                insights.append(f"Solid {pct}% accuracy — room to improve on harder questions")
-
-        weak = ml_output.get("weak_topics", [])
-        if weak:
-            topics = ", ".join(t.get("topic", "") for t in weak[:2])
-            insights.append(f"Focus areas: {topics}")
-
-        behavior = ml_output.get("behavior")
-        if behavior == "guessing":
-            insights.append("Slow down on tough questions — speed isn't everything")
-        elif behavior == "careful":
-            insights.append("Great careful approach — accuracy is paying off")
-
-    elif context == "study_planner":
+    if context == "study_planner":
         mastery = ml_output.get("overall_mastery")
         if mastery is not None:
             insights.append(f"Overall mastery across topics: {round(mastery * 100)}%")
@@ -270,3 +478,24 @@ def _template_fallback(ml_output, context):
         insights.append("Keep practicing to unlock personalized insights!")
 
     return insights
+
+
+# ─── Fine-Tuning Data Logger ─────────────────────────────────────────────────
+
+def _log_training_pair(signals, insights):
+    """
+    Append an instruction/input/output triple to the JSONL training file.
+    This builds the dataset for fine-tuning Llama 3.1:8B.
+    """
+    try:
+        os.makedirs(TRAINING_DATA_DIR, exist_ok=True)
+        entry = {
+            "instruction": "Generate professional teacher-style duel feedback.",
+            "input": signals,
+            "output": insights,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+        with open(TRAINING_DATA_FILE, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, default=str) + "\n")
+    except Exception:
+        pass  # Never let logging break the pipeline

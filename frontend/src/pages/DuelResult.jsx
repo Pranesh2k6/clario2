@@ -71,6 +71,7 @@ export default function DuelResult() {
   const navigate = useNavigate();
   const location = useLocation();
   const {
+    duelId,
     playerScore = 0,
     opponentScore = 0,
     opponentForfeited = false,
@@ -98,10 +99,15 @@ export default function DuelResult() {
   useEffect(() => {
     const fetchAnalytics = async () => {
       try {
+        // Build insights URL with duel_id if available
+        const insightsUrl = duelId
+          ? `/analytics/insights?context=duel_result&duel_id=${duelId}`
+          : '/analytics/insights?context=duel_result';
+
         const [weakRes, dashRes, nlgRes, ratingRes] = await Promise.allSettled([
           getWeakTopics(),
           getDashboardAnalytics(),
-          client.get('/analytics/insights?context=duel_result'),
+          client.get(insightsUrl),
           client.get('/analytics/rating'),
         ]);
         if (weakRes.status === 'fulfilled') setWeakTopicsData(weakRes.value.data || []);
@@ -113,7 +119,7 @@ export default function DuelResult() {
       }
     };
     fetchAnalytics();
-  }, []);
+  }, [duelId]);
 
   // Format time for display
   const formatTime = (ms) => {
@@ -143,52 +149,6 @@ export default function DuelResult() {
   const fastestCorrect = correctRounds.length > 0 ? Math.min(...correctRounds.map(r => r.timeTaken)) : 0;
   const hardestSolved = rounds.some(r => r.difficulty === 'Hard' && r.correct);
 
-  // ── Dynamic Key Insights (computed from this duel) ──────────────────────────
-  const dynamicInsights = useMemo(() => {
-    const insights = [];
-
-    // Speed insight
-    if (avgResponseTime < 15) {
-      insights.push('Quick responses — you answered most questions under 15s');
-    } else if (avgResponseTime > 20) {
-      insights.push('Taking your time — average response over 20s per question');
-    }
-
-    // Accuracy by difficulty
-    if (easyTotal > 0 && easyAccuracy === 100) {
-      insights.push('Perfect accuracy on easy questions');
-    }
-    if (mediumTotal > 0 && mediumAccuracy < 50) {
-      insights.push('Accuracy dropped on medium difficulty — review core concepts');
-    }
-    if (hardTotal > 0 && hardAccuracy > 50) {
-      insights.push('Strong performance on hard questions — impressive!');
-    } else if (hardTotal > 0 && hardAccuracy === 0) {
-      insights.push('Missed all hard questions — practice at higher difficulty');
-    }
-
-    // Overall performance
-    if (overallAccuracy >= 80) {
-      insights.push(`Excellent overall accuracy: ${Math.round(overallAccuracy)}%`);
-    } else if (overallAccuracy < 40) {
-      insights.push(`Low accuracy this duel (${Math.round(overallAccuracy)}%) — focus on weak areas`);
-    }
-
-    // Score comparison
-    if (playerWon && playerScore - opponentScore >= 300) {
-      insights.push('Dominant victory — outscored opponent by 300+ points');
-    }
-
-    // Ensure we always have at least 2 insights
-    if (insights.length === 0) {
-      insights.push(`Overall accuracy: ${Math.round(overallAccuracy)}%`);
-      insights.push(`Average response time: ${avgResponseTime}s`);
-    } else if (insights.length === 1) {
-      insights.push(`Average response time: ${avgResponseTime}s per question`);
-    }
-
-    return insights.slice(0, 4);
-  }, [rounds, avgResponseTime, easyTotal, easyAccuracy, mediumTotal, mediumAccuracy, hardTotal, hardAccuracy, overallAccuracy, playerWon, playerScore, opponentScore]);
 
   // ── Dynamic Focus Areas (from intelligence system, fallback to duel data) ──
   const focusAreas = useMemo(() => {
@@ -390,25 +350,7 @@ export default function DuelResult() {
               </div>
             </motion.div>
 
-            {/* Key Insights - DYNAMIC */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.85 }}
-              className="mb-6 p-5 bg-white/5 border border-white/10 rounded-2xl"
-            >
-              <h3 className="text-[13px] font-semibold text-[#F3F4F6] mb-3">Key Insights</h3>
-              <ul className="space-y-2">
-                {dynamicInsights.map((insight, i) => (
-                  <li key={i} className="flex items-start gap-2 text-[12px] text-[#D1D5DB]">
-                    <div className="w-1 h-1 rounded-full bg-[#6366F1] mt-1.5 flex-shrink-0" />
-                    <span>{insight}</span>
-                  </li>
-                ))}
-              </ul>
-            </motion.div>
-
-            {/* NLG Post-Match Analysis + TrueSkill */}
+            {/* Teacher-Style Feedback + TrueSkill */}
             {(nlgInsights.length > 0 || skillRating) && (
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
@@ -417,7 +359,7 @@ export default function DuelResult() {
                 className="mb-6 p-5 bg-gradient-to-br from-[rgba(124,58,237,0.08)] to-[rgba(99,102,241,0.05)] border border-[#7C3AED]/20 rounded-2xl"
               >
                 <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-[13px] font-semibold text-[#F3F4F6]">🧠 AI Analysis</h3>
+                  <h3 className="text-[13px] font-semibold text-[#F3F4F6]">🧠 Teacher Feedback</h3>
                   {skillRating && (
                     <div className="flex items-center gap-2">
                       <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider
@@ -433,11 +375,11 @@ export default function DuelResult() {
                   )}
                 </div>
                 {nlgInsights.length > 0 && (
-                  <ul className="space-y-2">
-                    {nlgInsights.slice(0, 3).map((insight, i) => (
-                      <li key={i} className="flex items-start gap-2 text-[12px] text-[#D1D5DB]">
-                        <div className="w-1.5 h-1.5 rounded-full bg-[#7C3AED] mt-1.5 flex-shrink-0 shadow-[0_0_4px_rgba(124,58,237,0.8)]" />
-                        <span>{insight}</span>
+                  <ul className="space-y-3">
+                    {nlgInsights.slice(0, 4).map((insight, i) => (
+                      <li key={i} className="flex items-start gap-2.5 text-[12px] leading-relaxed text-[#D1D5DB]">
+                        <div className="w-1.5 h-1.5 rounded-full bg-[#7C3AED] mt-2 flex-shrink-0 shadow-[0_0_4px_rgba(124,58,237,0.8)]" />
+                        <span className="flex-1 break-words">{insight}</span>
                       </li>
                     ))}
                   </ul>

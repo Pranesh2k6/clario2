@@ -10,7 +10,7 @@ import client from '../api/client';
 const BASE_PLANETS = [
   { id: 'physics', name: 'Physics', icon: '⚛️', baseColor: '#4a80f5', grad: 'linear-gradient(135deg,#1e3a8a,#3b5bdb)', size: 120, x: 22, y: 40 },
   { id: 'chemistry', name: 'Chemistry', icon: '🧪', baseColor: '#10b981', grad: 'linear-gradient(135deg,#064e3b,#059669)', size: 104, x: 62, y: 26 },
-  { id: 'math', name: 'Mathematics', icon: '📐', baseColor: '#8a4bff', grad: 'linear-gradient(135deg,#4c1d95,#7c3aed)', size: 112, x: 75, y: 60 },
+  { id: 'maths', name: 'Mathematics', icon: '📐', baseColor: '#8a4bff', grad: 'linear-gradient(135deg,#4c1d95,#7c3aed)', size: 112, x: 75, y: 60 },
 ];
 
 // Mastery thresholds determine planet visual state
