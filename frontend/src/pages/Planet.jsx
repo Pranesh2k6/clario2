@@ -92,7 +92,12 @@ export default function Planet() {
 
   const handleChapterClick = (chapterId, status) => {
     if (status !== 'locked') {
-      navigate(`/planet/${subjectId}/chapter/${chapterId}`);
+      // Navigate to dedicated Chemical Bonding page
+      if (subjectId === 'chemistry' && chapterId === 2) {
+        navigate('/planet/chemistry/chapter/chemical-bonding');
+      } else {
+        navigate(`/planet/${subjectId}/chapter/${chapterId}`);
+      }
     }
   };
 

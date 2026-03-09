@@ -27,6 +27,7 @@ import Duels from "./pages/Duels";
 import DuelMatch from "./pages/DuelMatch";
 import DuelResult from "./pages/DuelResult";
 import StudyPlanner from "./pages/StudyPlanner";
+import ChemBonding from "./pages/chemBonding";
 import ProtectedRoute from "./components/ProtectedRoute";
 
 function Protected({ children }) {
@@ -63,6 +64,10 @@ export const router = createBrowserRouter([
     element: <Protected><NewChapterDetail /></Protected>,
   },
   {
+    path: "/subject/chemistry/chapter/bonding/learn",
+    element: <Protected><ChemBonding /></Protected>,
+  },
+  {
     path: "/subject/maths/chapter/limits/learn",
     element: <Protected><LimitsLab /></Protected>,
   },
@@ -81,6 +86,10 @@ export const router = createBrowserRouter([
   {
     path: "/planet/:subjectId",
     element: <Protected><Planet /></Protected>,
+  },
+  {
+    path: "/planet/chemistry/chapter/chemical-bonding",
+    element: <Protected><ChemBonding /></Protected>,
   },
   {
     path: "/planet/:subjectId/chapter/:chapterId",
